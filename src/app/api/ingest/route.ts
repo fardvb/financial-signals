@@ -201,8 +201,9 @@ Be honest about uncertainty — confidence of 35 or 45 is fine. Only use 50 if g
 // ─── Route handler ─────────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
-  const secret = request.headers.get('x-cron-secret')
-  if (!secret || secret !== process.env.CRON_SECRET) {
+  // Vercel cron sends: Authorization: Bearer <CRON_SECRET>
+  const auth = request.headers.get('authorization')
+  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
