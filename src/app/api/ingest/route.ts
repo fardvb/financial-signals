@@ -194,7 +194,7 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 export async function GET(request: NextRequest) {
   const auth = request.headers.get('authorization')
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return NextResponse.json({ error: 'Unauthorized', debug: { secret_set: !!process.env.CRON_SECRET, got_header: !!auth } }, { status: 401 })
   }
 
   const db = adminDb()
