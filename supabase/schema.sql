@@ -37,5 +37,6 @@ INSERT INTO watchlist (ticker, name, asset_type, commodity_category) VALUES
   ('LMT',    'Lockheed Martin',  'equity',    NULL),
   ('RTX',    'RTX Corp',         'equity',    NULL),
   ('TSLA',   'Tesla',            'equity',    NULL),
-  ('FCX',    'Freeport-McMoRan', 'equity',    NULL),
-  ('EURUSD', 'EUR/USD',          'forex',     NULL);
+  ('FCX',    'Freeport-McMoRan',        'equity',    NULL),
+  ('COPX',   'Global X Copper Miners', 'equity',    NULL),
+  ('EURUSD', 'EUR/USD',                'forex',     NULL);
