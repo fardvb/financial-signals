@@ -1,0 +1,20 @@
+name: Calibrate signals
+
+# Runs daily. The 5-day cadence itself is enforced inside /api/calibrate (signals
+# aren't graded until they're 5 days old, and decay is time-scaled) — this schedule
+# just needs to poll often enough that nothing goes stale. GitHub Actions' day-of-month
+# "*/5" cron field is calendar-relative, not "every 5 days rolling", so it's intentionally
+# not used here.
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/calibrate
+        run: |
+          curl -sf -X GET "${{ secrets.DEPLOY_URL }}/api/calibrate" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
