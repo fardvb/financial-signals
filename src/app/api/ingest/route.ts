@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Groq from 'groq-sdk'
 import { createClient } from '@supabase/supabase-js'
-import type { WatchlistAsset, SignalDirection, SignalSource } from '@/types'
+import type { CalibrationProfile, ConfidenceBucket, EventCategory, SignalDirection, SignalSource, WatchlistAsset } from '@/types'
+import { getAssetClass } from '@/lib/scoring/assetClass'
+import { computeConfidence, type CalibrationSnapshot, type TriagedArticle as ScoringTriagedArticle } from '@/lib/scoring/confidence'
+import { EVENT_CATEGORIES, isEventCategory } from '@/lib/scoring/eventWeights'
+import { DEDUP_WINDOW_HOURS, MIN_N_FOR_PROMPT_CONTEXT } from '@/lib/scoring/constants'
+import { getQuote } from '@/lib/finnhub/quote'
 
 export const maxDuration = 300
 export const dynamic = 'force-dynamic'
@@ -23,6 +28,10 @@ interface FinnhubArticle {
   datetime: number
   summary: string
   url: string
+}
+
+interface TriagedArticle extends FinnhubArticle {
+  category: EventCategory
 }
 
 async function fetchFinnhubNews(asset: WatchlistAsset): Promise<FinnhubArticle[]> {
@@ -57,14 +66,15 @@ async function fetchFinnhubNews(asset: WatchlistAsset): Promise<FinnhubArticle[]
 async function triageWithGroq(
   asset: WatchlistAsset,
   articles: FinnhubArticle[]
-): Promise<FinnhubArticle[]> {
+): Promise<TriagedArticle[]> {
   if (articles.length === 0) return []
 
   const headlineList = articles.map((a, i) => `[${i}] ${a.headline}`).join('\n')
+  const categoryList = EVENT_CATEGORIES.join(', ')
 
   const response = await groq.chat.completions.create({
     model: 'llama-3.1-8b-instant',
-    max_tokens: 256,
+    max_tokens: 500,
     response_format: { type: 'json_object' },
     messages: [
       {
@@ -75,7 +85,8 @@ async function triageWithGroq(
         role: 'user',
         content:
           `Which headlines are directly relevant to ${asset.name} (${asset.ticker}, ${asset.asset_type}${asset.commodity_category ? ', ' + asset.commodity_category : ''})?\n\n` +
-          `Return: {"relevant_indices": [0, 2, 5]}\n` +
+          `For each relevant headline, also tag its event category from this exact list: ${categoryList}.\n\n` +
+          `Return: {"tagged": [{"index": 0, "category": "geopolitical-conflict"}, {"index": 2, "category": "corporate-earnings"}]}\n` +
           `Include only material relevance — skip general noise.\n\n` +
           `Headlines:\n${headlineList}`,
       },
@@ -85,12 +96,16 @@ async function triageWithGroq(
   const text = response.choices[0].message.content ?? ''
   try {
     const parsed = JSON.parse(text)
-    const indices: number[] = Array.isArray(parsed.relevant_indices) ? parsed.relevant_indices : []
-    return indices
-      .filter(i => typeof i === 'number' && i >= 0 && i < articles.length)
-      .map(i => articles[i])
+    const tagged: { index?: number; category?: string }[] = Array.isArray(parsed.tagged) ? parsed.tagged : []
+    const result: TriagedArticle[] = []
+    for (const t of tagged) {
+      if (typeof t.index !== 'number' || t.index < 0 || t.index >= articles.length) continue
+      const category: EventCategory = isEventCategory(t.category) ? t.category : 'other'
+      result.push({ ...articles[t.index], category })
+    }
+    return result
   } catch {
-    return articles.slice(0, 8)
+    return articles.slice(0, 8).map(a => ({ ...a, category: 'other' as EventCategory }))
   }
 }
 
@@ -98,7 +113,7 @@ async function triageWithGroq(
 
 interface SynthesizedSignal {
   direction: SignalDirection
-  confidence: number
+  llm_confidence: number
   reasoning: string
   sources: SignalSource[]
   news_window_start: string
@@ -120,7 +135,8 @@ function assetContext(asset: WatchlistAsset): string {
 
 async function synthesizeWithGroq(
   asset: WatchlistAsset,
-  articles: FinnhubArticle[]
+  articles: TriagedArticle[],
+  calibrationContext: string
 ): Promise<SynthesizedSignal | null> {
   const newsWindowStart = new Date(
     Math.min(...articles.map(a => a.datetime)) * 1000
@@ -143,6 +159,7 @@ async function synthesizeWithGroq(
         content:
           `You are a personal financial signal generator — NOT a financial advisor. Produce directional signal observations for personal research only. Never give investment advice.\n\n` +
           `${assetContext(asset)}\n\n` +
+          (calibrationContext ? `${calibrationContext}\n\n` : '') +
           `Return a single JSON object:\n` +
           `{"direction":"buy"|"sell"|"hold","confidence":0-100,"reasoning":"2-4 sentences","sources":[{"headline":"...","source":"...","published_at":"ISO8601"}]}\n\n` +
           `Be honest about uncertainty — 35 or 45 is fine. Only use 50 if genuinely neutral.`,
@@ -162,7 +179,7 @@ async function synthesizeWithGroq(
     const direction = (['buy', 'sell', 'hold'] as const).includes(parsed.direction)
       ? (parsed.direction as SignalDirection)
       : 'hold'
-    const confidence = Math.max(0, Math.min(100, Math.round(Number(parsed.confidence) || 50)))
+    const llm_confidence = Math.max(0, Math.min(100, Math.round(Number(parsed.confidence) || 50)))
     const sources: SignalSource[] = Array.isArray(parsed.sources)
       ? parsed.sources.slice(0, 6).map((s: Partial<SignalSource>) => ({
           headline: String(s.headline ?? ''),
@@ -177,7 +194,7 @@ async function synthesizeWithGroq(
 
     return {
       direction,
-      confidence,
+      llm_confidence,
       reasoning: String(parsed.reasoning ?? ''),
       sources,
       news_window_start: newsWindowStart,
@@ -185,6 +202,40 @@ async function synthesizeWithGroq(
   } catch {
     return null
   }
+}
+
+// ─── Calibration context ──────────────────────────────────────────────────────
+
+function formatCalibrationContext(asset: WatchlistAsset, profiles: CalibrationProfile[]): string {
+  const relevant = profiles.filter(p => p.total_count >= MIN_N_FOR_PROMPT_CONTEXT)
+  if (relevant.length === 0) return ''
+
+  const lines = relevant.map(p => {
+    const hitRate = Math.round((p.correct_count / p.total_count) * 100)
+    const n = Math.round(p.total_count)
+    return `- ${p.direction} calls on ${asset.ticker} at ${bucketLabel(p.confidence_bucket)} confidence have hit ${hitRate}% of the time (n=${n}, decayed).`
+  })
+
+  return `Your own track record for this asset (factor this in honestly):\n${lines.join('\n')}`
+}
+
+function bucketLabel(bucket: string): string {
+  if (bucket === 'low') return '0-39%'
+  if (bucket === 'moderate') return '40-59%'
+  if (bucket === 'high') return '60-79%'
+  return '80-100%'
+}
+
+function calibrationByBucket(
+  profiles: CalibrationProfile[],
+  direction: SignalDirection
+): Partial<Record<ConfidenceBucket, CalibrationSnapshot>> {
+  const out: Partial<Record<ConfidenceBucket, CalibrationSnapshot>> = {}
+  for (const p of profiles) {
+    if (p.direction !== direction) continue
+    out[p.confidence_bucket] = { correctCount: p.correct_count, totalCount: p.total_count }
+  }
+  return out
 }
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
@@ -213,6 +264,21 @@ export async function GET(request: NextRequest) {
 
   for (const asset of watchlist) {
     try {
+      // Dedup guard: two GitHub Actions runs land ~12h apart, but manual reruns
+      // (workflow_dispatch) or overlap could otherwise double-fire the same window.
+      const { data: recent } = await db
+        .from('signals')
+        .select('created_at')
+        .eq('asset_id', asset.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (recent && Date.now() - new Date(recent.created_at).getTime() < DEDUP_WINDOW_HOURS * 60 * 60 * 1000) {
+        results.push({ ticker: asset.ticker, status: 'skipped_recent' })
+        continue
+      }
+
       const articles = await fetchFinnhubNews(asset)
       if (articles.length === 0) {
         results.push({ ticker: asset.ticker, status: 'no_news' })
@@ -225,19 +291,39 @@ export async function GET(request: NextRequest) {
         continue
       }
 
-      const signal = await synthesizeWithGroq(asset, relevant)
+      const { data: calibrationRows } = await db
+        .from('calibration_profiles')
+        .select('*')
+        .eq('asset_id', asset.id)
+      const profiles = (calibrationRows ?? []) as CalibrationProfile[]
+      const calibrationContext = formatCalibrationContext(asset, profiles)
+
+      const signal = await synthesizeWithGroq(asset, relevant, calibrationContext)
       if (!signal) {
         results.push({ ticker: asset.ticker, status: 'synthesis_failed' })
         continue
       }
 
+      const assetClass = getAssetClass(asset)
+      const scoringArticles: ScoringTriagedArticle[] = relevant.map(a => ({ source: a.source, category: a.category }))
+      const confidence = computeConfidence({
+        llmConfidence: signal.llm_confidence,
+        triaged: scoringArticles,
+        assetClass,
+        direction: signal.direction,
+        calibrationByBucket: calibrationByBucket(profiles, signal.direction),
+      })
+
+      const price_at_signal = await getQuote(asset.price_symbol)
+
       const { error: insertError } = await db.from('signals').insert({
         asset_id: asset.id,
         direction: signal.direction,
-        confidence: signal.confidence,
+        confidence,
         reasoning: signal.reasoning,
         sources: signal.sources,
         news_window_start: signal.news_window_start,
+        price_at_signal,
       })
 
       if (insertError) {
@@ -254,7 +340,7 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({
-    ok: results.every(r => r.status === 'ok'),
+    ok: results.every(r => r.status === 'ok' || r.status === 'skipped_recent'),
     processed: results.filter(r => r.status === 'ok').length,
     total: watchlist.length,
     results,
