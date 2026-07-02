@@ -1,5 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { WatchlistAsset, Signal, SignalDirection, SignalSource } from '@/types'
+import type { WatchlistAsset, Signal, SignalDirection, SignalSource, CalibrationProfile } from '@/types'
+import { MIN_N_FOR_DASHBOARD_DISPLAY } from '@/lib/scoring/constants'
+import { getQuote } from '@/lib/finnhub/quote'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +23,11 @@ function directionColors(d: SignalDirection) {
   return { badge: 'bg-zinc-800 text-zinc-300', bar: 'bg-zinc-500', dot: 'bg-zinc-500' }
 }
 
+function formatPrice(price: number): string {
+  const decimals = price < 10 ? 4 : 2
+  return price.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+}
+
 function assetTypeBadge(asset: WatchlistAsset): string {
   if (asset.commodity_category === 'safe-haven') return 'Safe Haven'
   if (asset.commodity_category === 'industrial') return 'Industrial'
@@ -30,10 +37,12 @@ function assetTypeBadge(asset: WatchlistAsset): string {
   return 'Equity'
 }
 
-function AssetCard({ asset, latest, history }: {
+function AssetCard({ asset, latest, history, accuracy, price }: {
   asset: WatchlistAsset
   latest: SignalRow | undefined
   history: SignalRow[]
+  accuracy: { rate: number; n: number } | null
+  price: number | null
 }) {
   const colors = latest ? directionColors(latest.direction) : null
 
@@ -46,6 +55,11 @@ function AssetCard({ asset, latest, history }: {
             <span className="text-xs px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
               {assetTypeBadge(asset)}
             </span>
+            {price != null && (
+              <span className="text-sm text-zinc-300 tabular-nums">
+                {asset.asset_type === 'forex' ? '' : '$'}{formatPrice(price)}
+              </span>
+            )}
           </div>
           <div className="text-sm text-zinc-400 mt-0.5">{asset.name}</div>
         </div>
@@ -77,6 +91,12 @@ function AssetCard({ asset, latest, history }: {
           </div>
 
           <p className="text-sm text-zinc-300 leading-relaxed">{latest.reasoning}</p>
+
+          {accuracy && (
+            <div className="text-xs text-zinc-500">
+              Historical accuracy: {Math.round(accuracy.rate * 100)}% (n={Math.round(accuracy.n)})
+            </div>
+          )}
 
           {latest.sources.length > 0 && (
             <div className="space-y-1">
@@ -115,18 +135,32 @@ function AssetCard({ asset, latest, history }: {
 export default async function DashboardPage() {
   const db = createAdminClient()
 
-  const [{ data: assets }, { data: signals }] = await Promise.all([
+  const [{ data: assets }, { data: signals }, { data: calibration }] = await Promise.all([
     db.from('watchlist').select('*').eq('active', true).order('asset_type').order('ticker'),
     db.from('signals').select('*, watchlist(*)').order('created_at', { ascending: false }).limit(120),
+    db.from('calibration_profiles').select('*'),
   ])
 
   const watchlist = (assets ?? []) as WatchlistAsset[]
   const signalRows = (signals ?? []) as SignalRow[]
+  const calibrationRows = (calibration ?? []) as CalibrationProfile[]
+
+  const quotes = await Promise.all(watchlist.map(asset => getQuote(asset.price_symbol)))
+  const priceByAsset: Record<string, number | null> = {}
+  watchlist.forEach((asset, i) => { priceByAsset[asset.id] = quotes[i] })
 
   const byAsset: Record<string, SignalRow[]> = {}
   for (const s of signalRows) {
     if (!byAsset[s.asset_id]) byAsset[s.asset_id] = []
     if (byAsset[s.asset_id].length < 5) byAsset[s.asset_id].push(s)
+  }
+
+  const accuracyByAsset: Record<string, { rate: number; n: number } | null> = {}
+  for (const asset of watchlist) {
+    const profiles = calibrationRows.filter(p => p.asset_id === asset.id)
+    const n = profiles.reduce((sum, p) => sum + p.total_count, 0)
+    const correct = profiles.reduce((sum, p) => sum + p.correct_count, 0)
+    accuracyByAsset[asset.id] = n >= MIN_N_FOR_DASHBOARD_DISPLAY ? { rate: correct / n, n } : null
   }
 
   const latestRun = signalRows[0]?.created_at
@@ -150,6 +184,8 @@ export default async function DashboardPage() {
             asset={asset}
             latest={byAsset[asset.id]?.[0]}
             history={byAsset[asset.id] ?? []}
+            accuracy={accuracyByAsset[asset.id]}
+            price={priceByAsset[asset.id]}
           />
         ))}
       </div>
