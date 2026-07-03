@@ -112,8 +112,7 @@ async function triageWithGroq(
 // ─── Groq synthesis ───────────────────────────────────────────────────────────
 
 interface SynthesizedSignal {
-  direction: SignalDirection
-  llm_confidence: number
+  llmBreakdown: Record<SignalDirection, number>
   reasoning: string
   sources: SignalSource[]
   news_window_start: string
@@ -161,10 +160,14 @@ async function synthesizeWithGroq(
           `${assetContext(asset)}\n\n` +
           (calibrationContext ? `${calibrationContext}\n\n` : '') +
           `Return a single JSON object:\n` +
-          `{"direction":"buy"|"sell"|"hold","confidence":0-100,"reasoning":"2-4 sentences","sources":[{"headline":"...","source":"...","published_at":"ISO8601"}]}\n\n` +
-          `Use the full 0-100 range based on genuine conviction: 10-30 when evidence is thin, conflicting, or mostly noise; ` +
+          `{"confidence_breakdown":{"buy":0-100,"sell":0-100,"hold":0-100},"reasoning":"2-4 sentences","sources":[{"headline":"...","source":"...","published_at":"ISO8601"}]}\n\n` +
+          `confidence_breakdown is your independent conviction in each direction based on the evidence — they do not need to sum to 100. ` +
+          `Use the full 0-100 range per direction: 10-30 when evidence for that direction is thin, conflicting, or mostly noise; ` +
           `40-60 when directionally suggestive but not decisive; 70-90 when multiple credible sources strongly and consistently ` +
-          `support one direction; 90+ only for extremely clear-cut, high-magnitude events. Don't default to the middle out of caution.`,
+          `support that direction; 90+ only for extremely clear-cut, high-magnitude cases. Don't default to the middle out of caution.\n\n` +
+          `Evaluate buy, sell, and hold with equal rigor — there is no inherent bias toward buy. Bearish, weakening, or negative-outlook ` +
+          `evidence should score sell higher than buy or hold, just as bullish evidence should score buy higher. Don't avoid sell out of caution ` +
+          `when the evidence actually supports it.`,
       },
       {
         role: 'user',
@@ -189,10 +192,12 @@ async function synthesizeWithGroq(
   const text = response.choices[0].message.content ?? ''
   try {
     const parsed = JSON.parse(text)
-    const direction = (['buy', 'sell', 'hold'] as const).includes(parsed.direction)
-      ? (parsed.direction as SignalDirection)
-      : 'hold'
-    const llm_confidence = Math.max(0, Math.min(100, Math.round(Number(parsed.confidence) || 50)))
+    const rawBreakdown = parsed.confidence_breakdown ?? {}
+    const llmBreakdown: Record<SignalDirection, number> = {
+      buy: Math.max(0, Math.min(100, Math.round(Number(rawBreakdown.buy) || 0))),
+      sell: Math.max(0, Math.min(100, Math.round(Number(rawBreakdown.sell) || 0))),
+      hold: Math.max(0, Math.min(100, Math.round(Number(rawBreakdown.hold) || 50))),
+    }
     const sources: SignalSource[] = Array.isArray(parsed.sources)
       ? parsed.sources.slice(0, 6).map((s: Partial<SignalSource>) => ({
           headline: String(s.headline ?? ''),
@@ -208,8 +213,7 @@ async function synthesizeWithGroq(
         }))
 
     return {
-      direction,
-      llm_confidence,
+      llmBreakdown,
       reasoning: String(parsed.reasoning ?? ''),
       sources,
       news_window_start: newsWindowStart,
@@ -321,20 +325,36 @@ export async function GET(request: NextRequest) {
 
       const assetClass = getAssetClass(asset)
       const scoringArticles: ScoringTriagedArticle[] = relevant.map(a => ({ source: a.source, category: a.category }))
-      const confidence = computeConfidence({
-        llmConfidence: signal.llm_confidence,
-        triaged: scoringArticles,
-        assetClass,
-        direction: signal.direction,
-        calibrationByBucket: calibrationByBucket(profiles, signal.direction),
-      })
+
+      // Compute a real, independently calibrated confidence for all three directions —
+      // srcScore/eventScore don't depend on direction, only the LLM's per-direction
+      // conviction and that direction's own calibration bucket do.
+      const directions: SignalDirection[] = ['buy', 'sell', 'hold']
+      const confidenceBreakdown = Object.fromEntries(
+        directions.map(d => [
+          d,
+          computeConfidence({
+            llmConfidence: signal.llmBreakdown[d],
+            triaged: scoringArticles,
+            assetClass,
+            direction: d,
+            calibrationByBucket: calibrationByBucket(profiles, d),
+          }),
+        ])
+      ) as Record<SignalDirection, number>
+
+      const direction = directions.reduce((best, d) =>
+        confidenceBreakdown[d] > confidenceBreakdown[best] ? d : best
+      )
+      const confidence = confidenceBreakdown[direction]
 
       const price_at_signal = await getQuote(asset.price_symbol)
 
       const { error: insertError } = await db.from('signals').insert({
         asset_id: asset.id,
-        direction: signal.direction,
+        direction,
         confidence,
+        confidence_breakdown: confidenceBreakdown,
         reasoning: signal.reasoning,
         sources: signal.sources,
         news_window_start: signal.news_window_start,

@@ -52,6 +52,7 @@ export interface Signal {
   sources: SignalSource[]
   news_window_start: string
   price_at_signal: number | null
+  confidence_breakdown: Partial<Record<SignalDirection, number>> | null
   created_at: string
 }
 

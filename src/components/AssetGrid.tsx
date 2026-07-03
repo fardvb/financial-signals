@@ -167,7 +167,7 @@ function AssetCard({ data, onOpen }: { data: CardData; onOpen: () => void }) {
 }
 
 function AssetDetailModal({ data, onClose }: { data: CardData; onClose: () => void }) {
-  const { asset, latest, history, accuracy, price } = data
+  const { asset, latest, accuracy, price } = data
   const colors = latest ? directionColors(latest.direction) : null
 
   return (
@@ -251,18 +251,28 @@ function AssetDetailModal({ data, onClose }: { data: CardData; onClose: () => vo
               </div>
             )}
 
-            {history.length > 0 && (
-              <div className="space-y-1 pt-2 border-t border-zinc-800">
-                <div className="text-xs text-zinc-500 uppercase tracking-wide">Recent history</div>
-                {history.map((s, i) => (
-                  <div key={i} className="flex items-center justify-between text-xs text-zinc-400">
-                    <span className="flex items-center gap-1.5">
-                      <span className={`w-2 h-2 rounded-full ${directionColors(s.direction).dot}`} />
-                      {s.direction} · {s.confidence}%
-                    </span>
-                    <span className="text-zinc-600">{new Date(s.created_at).toLocaleString()}</span>
-                  </div>
-                ))}
+            {latest.confidence_breakdown ? (
+              <div className="space-y-2 pt-2 border-t border-zinc-800">
+                <div className="text-xs text-zinc-500 uppercase tracking-wide">Confidence by direction</div>
+                {(['buy', 'sell', 'hold'] as SignalDirection[]).map(d => {
+                  const value = latest.confidence_breakdown?.[d] ?? 0
+                  const barColor = d === 'buy' ? 'bg-emerald-500' : d === 'sell' ? 'bg-red-500' : 'bg-zinc-500'
+                  return (
+                    <div key={d}>
+                      <div className="flex justify-between text-xs text-zinc-500 mb-1">
+                        <span className="capitalize">{d}</span>
+                        <span>{value}%</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-zinc-800">
+                        <div className={`h-full rounded-full ${barColor}`} style={{ width: `${value}%` }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="text-xs text-zinc-600 italic pt-2 border-t border-zinc-800">
+                Per-direction breakdown not available for this signal (generated before this feature shipped).
               </div>
             )}
           </>

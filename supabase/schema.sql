@@ -27,6 +27,9 @@ CREATE TABLE signals (
   news_window_start TIMESTAMPTZ NOT NULL,
   -- price of price_symbol captured at signal creation, for later outcome grading
   price_at_signal   NUMERIC,
+  -- calibrated confidence for all three directions, e.g. {"buy":62,"sell":15,"hold":38} — null for
+  -- signals created before this was tracked
+  confidence_breakdown JSONB,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
