@@ -11,9 +11,9 @@ export const CREDIBLE_SOURCES = new Set([
   'WSJ',
 ])
 
-export const CALIB_MAX_PULL = 0.4
-export const N_SATURATE = 20
-export const MIN_N_FOR_CALIB_PULL = 3
+export const CALIB_MAX_PULL = 0.6
+export const N_SATURATE = 12
+export const MIN_N_FOR_CALIB_PULL = 2
 export const MIN_N_FOR_PROMPT_CONTEXT = 3
 export const MIN_N_FOR_DASHBOARD_DISPLAY = 5
 

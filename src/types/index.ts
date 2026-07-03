@@ -40,6 +40,7 @@ export interface SignalSource {
   headline: string
   source: string
   published_at: string
+  url?: string
 }
 
 export interface Signal {

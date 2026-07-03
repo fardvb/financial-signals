@@ -73,4 +73,9 @@ INSERT INTO watchlist (ticker, name, asset_type, commodity_category, price_symbo
   ('TSLA',   'Tesla',                  'equity',    NULL,          'TSLA'),
   ('FCX',    'Freeport-McMoRan',       'equity',    NULL,          'FCX'),
   ('COPX',   'Global X Copper Miners', 'equity',    NULL,          'COPX'),
-  ('EURUSD', 'EUR/USD',                'forex',     NULL,          'OANDA:EUR_USD');
+  ('EURUSD', 'EUR/USD',                'forex',     NULL,          'OANDA:EUR_USD'),
+  ('GBPUSD', 'GBP/USD',                'forex',     NULL,          'OANDA:GBP_USD'),
+  ('USDCNH', 'USD/CNH (Yuan)',         'forex',     NULL,          'OANDA:USD_CNH'),
+  ('NVDA',   'NVIDIA',                 'equity',    NULL,          'NVDA'),
+  ('BRENT',  'Brent Crude Oil',        'commodity', 'energy',      'BNO'),
+  ('SLVP',   'Global Silver Miners',   'equity',    NULL,          'SLVP');

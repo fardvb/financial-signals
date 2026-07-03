@@ -162,7 +162,9 @@ async function synthesizeWithGroq(
           (calibrationContext ? `${calibrationContext}\n\n` : '') +
           `Return a single JSON object:\n` +
           `{"direction":"buy"|"sell"|"hold","confidence":0-100,"reasoning":"2-4 sentences","sources":[{"headline":"...","source":"...","published_at":"ISO8601"}]}\n\n` +
-          `Be honest about uncertainty — 35 or 45 is fine. Only use 50 if genuinely neutral.`,
+          `Use the full 0-100 range based on genuine conviction: 10-30 when evidence is thin, conflicting, or mostly noise; ` +
+          `40-60 when directionally suggestive but not decisive; 70-90 when multiple credible sources strongly and consistently ` +
+          `support one direction; 90+ only for extremely clear-cut, high-magnitude events. Don't default to the middle out of caution.`,
       },
       {
         role: 'user',
@@ -172,6 +174,17 @@ async function synthesizeWithGroq(
       },
     ],
   })
+
+  // The LLM regenerates headline/source text rather than echoing the article object,
+  // so match it back to the original article to recover a real, clickable URL.
+  const findUrl = (headline: string): string | undefined => {
+    const norm = (s: string) => s.toLowerCase().trim()
+    const target = norm(headline)
+    const exact = articles.find(a => norm(a.headline) === target)
+    if (exact) return exact.url
+    const partial = articles.find(a => norm(a.headline).includes(target) || target.includes(norm(a.headline)))
+    return partial?.url
+  }
 
   const text = response.choices[0].message.content ?? ''
   try {
@@ -185,11 +198,13 @@ async function synthesizeWithGroq(
           headline: String(s.headline ?? ''),
           source: String(s.source ?? ''),
           published_at: String(s.published_at ?? ''),
+          url: findUrl(String(s.headline ?? '')),
         }))
       : articleList.slice(0, 5).map(a => ({
           headline: a.headline,
           source: a.source,
           published_at: a.published_at,
+          url: findUrl(a.headline),
         }))
 
     return {
