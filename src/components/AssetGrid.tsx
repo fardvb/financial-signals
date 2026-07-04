@@ -41,6 +41,28 @@ function formatPrice(price: number): string {
   return price.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
 }
 
+// Displayed breakdown is normalized to sum to 100% for readability, even though the
+// underlying confidence_breakdown values are independent per-direction conviction scores
+// (deliberately not constrained to sum to 100 — see confidence.ts). Largest-remainder
+// rounding keeps the displayed percentages summing exactly to 100.
+function normalizeBreakdown(raw: Partial<Record<SignalDirection, number>>): Record<SignalDirection, number> {
+  const directions: SignalDirection[] = ['buy', 'sell', 'hold']
+  const values = directions.map(d => Math.max(0, raw[d] ?? 0))
+  const total = values.reduce((a, b) => a + b, 0)
+  if (total === 0) return { buy: 0, sell: 0, hold: 0 }
+
+  const shares = values.map(v => (v / total) * 100)
+  const floors = shares.map(Math.floor)
+  const remainder = 100 - floors.reduce((a, b) => a + b, 0)
+
+  const order = shares
+    .map((share, i) => ({ i, frac: share - floors[i] }))
+    .sort((a, b) => b.frac - a.frac)
+  for (let k = 0; k < remainder; k++) floors[order[k].i] += 1
+
+  return { buy: floors[0], sell: floors[1], hold: floors[2] }
+}
+
 function assetTypeBadge(asset: WatchlistAsset): string {
   if (asset.commodity_category === 'safe-haven') return 'Safe Haven'
   if (asset.commodity_category === 'industrial') return 'Industrial'
@@ -254,21 +276,24 @@ function AssetDetailModal({ data, onClose }: { data: CardData; onClose: () => vo
             {latest.confidence_breakdown ? (
               <div className="space-y-2 pt-2 border-t border-zinc-800">
                 <div className="text-xs text-zinc-500 uppercase tracking-wide">Confidence by direction</div>
-                {(['buy', 'sell', 'hold'] as SignalDirection[]).map(d => {
-                  const value = latest.confidence_breakdown?.[d] ?? 0
-                  const barColor = d === 'buy' ? 'bg-emerald-500' : d === 'sell' ? 'bg-red-500' : 'bg-zinc-500'
-                  return (
-                    <div key={d}>
-                      <div className="flex justify-between text-xs text-zinc-500 mb-1">
-                        <span className="capitalize">{d}</span>
-                        <span>{value}%</span>
+                {(() => {
+                  const normalized = normalizeBreakdown(latest.confidence_breakdown)
+                  return (['buy', 'sell', 'hold'] as SignalDirection[]).map(d => {
+                    const value = normalized[d]
+                    const barColor = d === 'buy' ? 'bg-emerald-500' : d === 'sell' ? 'bg-red-500' : 'bg-zinc-500'
+                    return (
+                      <div key={d}>
+                        <div className="flex justify-between text-xs text-zinc-500 mb-1">
+                          <span className="capitalize">{d}</span>
+                          <span>{value}%</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-zinc-800">
+                          <div className={`h-full rounded-full ${barColor}`} style={{ width: `${value}%` }} />
+                        </div>
                       </div>
-                      <div className="h-1.5 rounded-full bg-zinc-800">
-                        <div className={`h-full rounded-full ${barColor}`} style={{ width: `${value}%` }} />
-                      </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })
+                })()}
               </div>
             ) : (
               <div className="text-xs text-zinc-600 italic pt-2 border-t border-zinc-800">
