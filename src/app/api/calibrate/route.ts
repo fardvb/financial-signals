@@ -19,7 +19,9 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 interface GradeCandidate extends Signal {
   watchlist: WatchlistAsset
-  signal_outcomes: { id: string }[]
+  // signal_outcomes.signal_id is UNIQUE, so PostgREST embeds this one-to-one:
+  // a single object once graded, null before — not an array.
+  signal_outcomes: { id: string } | { id: string }[] | null
 }
 
 interface GradedOutcome {
@@ -50,8 +52,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: fetchError.message }, { status: 500 })
   }
 
+  // Tolerate both embed shapes (object/null for one-to-one, array if the unique
+  // constraint is ever dropped) — .length on the null case crashed every run
+  // from 2026-07-07 until this guard was added.
   const ungraded = ((candidates ?? []) as unknown as GradeCandidate[]).filter(
-    s => s.signal_outcomes.length === 0
+    s =>
+      s.signal_outcomes == null ||
+      (Array.isArray(s.signal_outcomes) && s.signal_outcomes.length === 0)
   )
 
   const graded: GradedOutcome[] = []

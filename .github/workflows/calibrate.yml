@@ -15,6 +15,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Call /api/calibrate
+        # Print status + body so failures are diagnosable from the Actions log —
+        # `curl -sf` alone hides both, and also treats 3xx redirects as success
+        # (the 2026-07-03 DEPLOY_URL outage hid behind exactly that).
         run: |
-          curl -sf -X GET "${{ secrets.DEPLOY_URL }}/api/calibrate" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+          status=$(curl -s -o response.txt -w "%{http_code}" -X GET \
+            "${{ secrets.DEPLOY_URL }}/api/calibrate" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          echo "HTTP $status"
+          cat response.txt
+          [ "$status" -ge 200 ] && [ "$status" -lt 300 ]
