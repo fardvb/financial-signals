@@ -7,6 +7,7 @@ import { computeConfidence, type CalibrationSnapshot, type TriagedArticle as Sco
 import { EVENT_CATEGORIES, isEventCategory } from '@/lib/scoring/eventWeights'
 import { DEDUP_WINDOW_HOURS, MIN_N_FOR_PROMPT_CONTEXT } from '@/lib/scoring/constants'
 import { getQuote } from '@/lib/finnhub/quote'
+import { guardCronRequest } from '@/lib/apiAuth'
 
 export const maxDuration = 300
 export const dynamic = 'force-dynamic'
@@ -54,7 +55,22 @@ async function fetchFinnhubNews(asset: WatchlistAsset): Promise<FinnhubArticle[]
   const res = await fetch(url, { cache: 'no-store' })
   if (!res.ok) throw new Error(`Finnhub ${res.status} for ${asset.ticker}`)
 
-  const articles: FinnhubArticle[] = await res.json()
+  const raw: unknown = await res.json()
+  if (!Array.isArray(raw)) return []
+
+  // Third-party text flows into LLM prompts, the DB, and rendered links — cap
+  // sizes and only keep http(s) URLs so a hostile/broken article can't oversize
+  // a prompt or smuggle a javascript: link into the UI.
+  const articles: FinnhubArticle[] = raw
+    .filter((a): a is Record<string, unknown> => typeof a === 'object' && a !== null)
+    .map(a => ({
+      headline: String(a.headline ?? '').slice(0, 300),
+      source: String(a.source ?? '').slice(0, 100),
+      datetime: typeof a.datetime === 'number' ? a.datetime : 0,
+      summary: String(a.summary ?? '').slice(0, 500),
+      url: typeof a.url === 'string' && /^https?:\/\//i.test(a.url) ? a.url.slice(0, 2000) : '',
+    }))
+    .filter(a => a.headline.length > 0)
 
   if (asset.asset_type !== 'equity') {
     const cutoff = sevenDaysAgo.getTime() / 1000
@@ -204,9 +220,9 @@ async function synthesizeWithGroq(
     }
     const sources: SignalSource[] = Array.isArray(parsed.sources)
       ? parsed.sources.slice(0, 6).map((s: Partial<SignalSource>) => ({
-          headline: String(s.headline ?? ''),
-          source: String(s.source ?? ''),
-          published_at: String(s.published_at ?? ''),
+          headline: String(s.headline ?? '').slice(0, 300),
+          source: String(s.source ?? '').slice(0, 100),
+          published_at: String(s.published_at ?? '').slice(0, 40),
           url: findUrl(String(s.headline ?? '')),
         }))
       : articleList.slice(0, 5).map(a => ({
@@ -218,7 +234,7 @@ async function synthesizeWithGroq(
 
     return {
       llmBreakdown,
-      reasoning: String(parsed.reasoning ?? ''),
+      reasoning: String(parsed.reasoning ?? '').slice(0, 2000),
       sources,
       news_window_start: newsWindowStart,
     }
@@ -266,10 +282,8 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
-  const auth = request.headers.get('authorization')
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized', debug: { secret_set: !!process.env.CRON_SECRET, got_header: !!auth } }, { status: 401 })
-  }
+  const denied = guardCronRequest(request)
+  if (denied) return denied
 
   const db = adminDb()
 

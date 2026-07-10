@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { guardCronRequest } from '@/lib/apiAuth'
 import type { CalibrationProfile, Signal, SignalDirection, WatchlistAsset } from '@/types'
 import { bucketFor } from '@/lib/scoring/confidence'
 import { getQuote } from '@/lib/finnhub/quote'
@@ -32,10 +33,8 @@ interface GradedOutcome {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = request.headers.get('authorization')
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const denied = guardCronRequest(request)
+  if (denied) return denied
 
   const db = adminDb()
   const cutoff = new Date(Date.now() - OUTCOME_GRADING_AGE_DAYS * 24 * 60 * 60 * 1000).toISOString()

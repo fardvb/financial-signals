@@ -61,6 +61,13 @@ CREATE TABLE calibration_profiles (
   UNIQUE (asset_id, direction, confidence_bucket)
 );
 
+-- RLS on, zero policies: all app access uses the server-side service_role key
+-- (bypasses RLS), so the anon key can neither read nor write anything.
+ALTER TABLE watchlist ENABLE ROW LEVEL SECURITY;
+ALTER TABLE signals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE signal_outcomes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE calibration_profiles ENABLE ROW LEVEL SECURITY;
+
 -- Seed watchlist
 INSERT INTO watchlist (ticker, name, asset_type, commodity_category, price_symbol) VALUES
   ('SPX',    'S&P 500',                'index',     NULL,          'SPY'),

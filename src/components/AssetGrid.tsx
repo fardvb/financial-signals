@@ -24,6 +24,12 @@ const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   crypto: 'Crypto',
 }
 
+// Source URLs come from third-party news data; never render a non-http(s)
+// scheme (javascript:, data:) as a clickable link.
+function isSafeUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url)
+}
+
 function timeAgo(dateStr: string): string {
   const secs = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
   if (secs < 60) return 'just now'
@@ -268,7 +274,7 @@ function AssetDetailModal({ data, onClose }: { data: CardData; onClose: () => vo
               <div className="space-y-1.5">
                 <div className="text-xs text-zinc-500 uppercase tracking-wide">All sources</div>
                 {(latest.sources as SignalSource[]).map((s, i) =>
-                  s.url ? (
+                  s.url && isSafeUrl(s.url) ? (
                     <a
                       key={i}
                       href={s.url}
