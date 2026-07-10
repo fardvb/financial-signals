@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { AssetType, SignalDirection, SignalSource, WatchlistAsset } from '@/types'
 import type { SignalRow } from '@/app/page'
+import TradingViewChart, { tradingViewSymbol } from '@/components/TradingViewChart'
 
 export interface CardData {
   asset: WatchlistAsset
@@ -20,6 +21,7 @@ const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   commodity: 'Commodity',
   equity: 'Equity',
   forex: 'Forex',
+  crypto: 'Crypto',
 }
 
 function timeAgo(dateStr: string): string {
@@ -69,6 +71,7 @@ function assetTypeBadge(asset: WatchlistAsset): string {
   if (asset.commodity_category === 'energy') return 'Energy'
   if (asset.asset_type === 'index') return 'Index'
   if (asset.asset_type === 'forex') return 'Forex'
+  if (asset.asset_type === 'crypto') return 'Crypto'
   return 'Equity'
 }
 
@@ -88,12 +91,18 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
   )
 }
 
+function priceUnit(asset: WatchlistAsset): string {
+  if (asset.asset_type === 'forex') return ' $/lot'
+  if (asset.asset_type === 'crypto') return ' $/coin'
+  return ' $/share'
+}
+
 function PriceLine({ asset, price }: { asset: WatchlistAsset; price: number | null }) {
   if (price == null) return null
   return (
     <span className="text-sm text-zinc-300 tabular-nums">
       {asset.asset_type === 'forex' ? '' : '$'}{formatPrice(price)}
-      <span className="text-zinc-500">{asset.asset_type === 'forex' ? ' $/lot' : ' $/share'}</span>
+      <span className="text-zinc-500">{priceUnit(asset)}</span>
     </span>
   )
 }
@@ -221,6 +230,13 @@ function AssetDetailModal({ data, onClose }: { data: CardData; onClose: () => vo
           </button>
         </div>
 
+        <div className="space-y-1.5">
+          <TradingViewChart asset={asset} />
+          <div className="text-xs text-zinc-600">
+            Chart: {tradingViewSymbol(asset)} — the instrument this asset&apos;s signals are quoted and graded against.
+          </div>
+        </div>
+
         {latest && colors ? (
           <>
             <div className="flex items-center gap-3">
@@ -335,7 +351,7 @@ export default function AssetGrid({ cards }: { cards: CardData[] }) {
         </div>
         <div className="flex items-center gap-1.5" data-testid="type-filters">
           <span className="text-xs text-zinc-600 mr-1">Type</span>
-          {(['all', 'index', 'commodity', 'equity', 'forex'] as AssetTypeFilter[]).map(t => (
+          {(['all', 'index', 'commodity', 'equity', 'forex', 'crypto'] as AssetTypeFilter[]).map(t => (
             <FilterChip key={t} active={assetType === t} onClick={() => setAssetType(t)}>
               {t === 'all' ? 'All' : ASSET_TYPE_LABELS[t]}
             </FilterChip>

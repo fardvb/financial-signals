@@ -7,7 +7,7 @@ CREATE TABLE watchlist (
   id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   ticker       TEXT        NOT NULL UNIQUE,
   name         TEXT        NOT NULL,
-  asset_type   TEXT        NOT NULL CHECK (asset_type IN ('index', 'commodity', 'equity', 'forex')),
+  asset_type   TEXT        NOT NULL CHECK (asset_type IN ('index', 'commodity', 'equity', 'forex', 'crypto')),
   -- only set for commodities; drives disclaimer copy about asset behaviour
   commodity_category TEXT  CHECK (commodity_category IN ('safe-haven', 'industrial', 'energy')),
   -- real quotable symbol used for outcome grading (ticker above may just be a display label)
@@ -81,4 +81,6 @@ INSERT INTO watchlist (ticker, name, asset_type, commodity_category, price_symbo
   ('USDCNH', 'USD/CNH (Yuan)',         'forex',     NULL,          'OANDA:USD_CNH'),
   ('NVDA',   'NVIDIA',                 'equity',    NULL,          'NVDA'),
   ('BRENT',  'Brent Crude Oil',        'commodity', 'energy',      'BNO'),
-  ('SLVP',   'Global Silver Miners',   'equity',    NULL,          'SLVP');
+  ('SLVP',   'Global Silver Miners',   'equity',    NULL,          'SLVP'),
+  ('INTC',   'Intel',                  'equity',    NULL,          'INTC'),
+  ('BTC',    'Bitcoin',                'crypto',    NULL,          'BINANCE:BTCUSDT');

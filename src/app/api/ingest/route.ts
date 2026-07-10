@@ -45,6 +45,8 @@ async function fetchFinnhubNews(asset: WatchlistAsset): Promise<FinnhubArticle[]
     url = `https://finnhub.io/api/v1/company-news?symbol=${asset.ticker}&from=${from}&to=${to}&token=${token}`
   } else if (asset.asset_type === 'forex') {
     url = `https://finnhub.io/api/v1/news?category=forex&token=${token}`
+  } else if (asset.asset_type === 'crypto') {
+    url = `https://finnhub.io/api/v1/news?category=crypto&token=${token}`
   } else {
     url = `https://finnhub.io/api/v1/news?category=general&token=${token}`
   }
@@ -129,6 +131,8 @@ function assetContext(asset: WatchlistAsset): string {
     return `${asset.name} is a major equity index reflecting broad market sentiment.`
   if (asset.asset_type === 'forex')
     return `${asset.name} is a forex pair. "buy" means the base currency strengthens vs the quote; "sell" means it weakens.`
+  if (asset.asset_type === 'crypto')
+    return `${asset.name} is a cryptocurrency. It is highly volatile, trades 24/7, and is driven mainly by regulation news (ETF approvals, SEC actions, legislation), central-bank liquidity conditions, adoption headlines, and broad risk sentiment.`
   return `${asset.name} (${asset.ticker}) is a US-listed equity.`
 }
 

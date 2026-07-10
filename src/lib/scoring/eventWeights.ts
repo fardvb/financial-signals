@@ -12,6 +12,8 @@ export const EVENT_WEIGHTS: Record<EventCategory, Record<AssetClass, number>> = 
     forex: 0.35,
     'defense-equity': 0.95,
     'general-equity': 0.25,
+    // BTC's safe-haven vs risk-asset behaviour is inconsistent — material but not decisive.
+    crypto: 0.5,
   },
   'currency-crisis': {
     'safe-haven': 0.55,
@@ -21,6 +23,8 @@ export const EVENT_WEIGHTS: Record<EventCategory, Record<AssetClass, number>> = 
     forex: 0.9,
     'defense-equity': 0.15,
     'general-equity': 0.2,
+    // capital-flight / currency-debasement narratives are a core BTC driver
+    crypto: 0.8,
   },
   'central-bank-policy': {
     'safe-haven': 0.6,
@@ -30,6 +34,8 @@ export const EVENT_WEIGHTS: Record<EventCategory, Record<AssetClass, number>> = 
     forex: 0.85,
     'defense-equity': 0.35,
     'general-equity': 0.6,
+    // liquidity conditions move crypto at least as hard as equities
+    crypto: 0.8,
   },
   sanctions: {
     'safe-haven': 0.5,
@@ -39,6 +45,7 @@ export const EVENT_WEIGHTS: Record<EventCategory, Record<AssetClass, number>> = 
     forex: 0.45,
     'defense-equity': 0.7,
     'general-equity': 0.3,
+    crypto: 0.6,
   },
   'supply-disruption': {
     'safe-haven': 0.25,
@@ -48,6 +55,7 @@ export const EVENT_WEIGHTS: Record<EventCategory, Record<AssetClass, number>> = 
     forex: 0.2,
     'defense-equity': 0.3,
     'general-equity': 0.4,
+    crypto: 0.1,
   },
   'corporate-earnings': {
     'safe-haven': 0.05,
@@ -57,6 +65,7 @@ export const EVENT_WEIGHTS: Record<EventCategory, Record<AssetClass, number>> = 
     forex: 0.1,
     'defense-equity': 0.85,
     'general-equity': 0.9,
+    crypto: 0.15,
   },
   regulatory: {
     'safe-haven': 0.1,
@@ -66,6 +75,8 @@ export const EVENT_WEIGHTS: Record<EventCategory, Record<AssetClass, number>> = 
     forex: 0.15,
     'defense-equity': 0.55,
     'general-equity': 0.55,
+    // ETF approvals, SEC actions, and legislation are the single biggest BTC mover
+    crypto: 0.9,
   },
   'analyst-rating': {
     'safe-haven': 0.05,
@@ -75,6 +86,7 @@ export const EVENT_WEIGHTS: Record<EventCategory, Record<AssetClass, number>> = 
     forex: 0.1,
     'defense-equity': 0.6,
     'general-equity': 0.7,
+    crypto: 0.15,
   },
   'routine-macro': {
     'safe-haven': 0.3,
@@ -84,6 +96,8 @@ export const EVENT_WEIGHTS: Record<EventCategory, Record<AssetClass, number>> = 
     forex: 0.4,
     'defense-equity': 0.2,
     'general-equity': 0.3,
+    // CPI/jobs prints reliably move BTC via the rates channel
+    crypto: 0.5,
   },
   other: {
     'safe-haven': 0.2,
@@ -93,6 +107,7 @@ export const EVENT_WEIGHTS: Record<EventCategory, Record<AssetClass, number>> = 
     forex: 0.2,
     'defense-equity': 0.2,
     'general-equity': 0.2,
+    crypto: 0.2,
   },
 }
 

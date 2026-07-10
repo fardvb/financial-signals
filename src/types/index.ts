@@ -1,4 +1,4 @@
-export type AssetType = 'index' | 'commodity' | 'equity' | 'forex'
+export type AssetType = 'index' | 'commodity' | 'equity' | 'forex' | 'crypto'
 export type CommodityCategory = 'safe-haven' | 'industrial' | 'energy'
 export type SignalDirection = 'buy' | 'sell' | 'hold'
 
@@ -22,6 +22,7 @@ export type AssetClass =
   | 'forex'
   | 'defense-equity'
   | 'general-equity'
+  | 'crypto'
 
 export type ConfidenceBucket = 'low' | 'moderate' | 'high' | 'very_high'
 

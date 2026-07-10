@@ -22,6 +22,8 @@ export const OUTCOME_THRESHOLDS: Record<AssetType, number> = {
   equity: 2.0,
   commodity: 2.0,
   forex: 0.75,
+  // BTC routinely moves ±2% on noise alone; a wider band keeps 'hold' meaningful.
+  crypto: 3.0,
 }
 
 export const CONFIDENCE_BUCKETS = [
