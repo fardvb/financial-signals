@@ -10,14 +10,6 @@ export interface SignalRow extends Signal {
   watchlist: WatchlistAsset
 }
 
-function timeAgo(dateStr: string): string {
-  const secs = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
-  if (secs < 60) return 'just now'
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
-  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`
-  return `${Math.floor(secs / 86400)}d ago`
-}
-
 export default async function DashboardPage() {
   const db = createAdminClient()
 
@@ -61,17 +53,7 @@ export default async function DashboardPage() {
 
   return (
     <main className="min-h-screen pb-20">
-      <header className="sticky top-0 z-40 bg-zinc-950/90 backdrop-blur border-b border-zinc-800 px-6 py-3 flex items-center justify-between">
-        <div>
-          <h1 className="font-semibold text-zinc-100 tracking-tight">Market Signals</h1>
-          <p className="text-xs text-zinc-500">Personal observation tool</p>
-        </div>
-        {latestRun && (
-          <div className="text-xs text-zinc-500">Updated {timeAgo(latestRun)}</div>
-        )}
-      </header>
-
-      <AssetGrid cards={cards} />
+      <AssetGrid cards={cards} latestRun={latestRun} />
     </main>
   )
 }

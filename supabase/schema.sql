@@ -90,4 +90,7 @@ INSERT INTO watchlist (ticker, name, asset_type, commodity_category, price_symbo
   ('BRENT',  'Brent Crude Oil',        'commodity', 'energy',      'BNO'),
   ('SLVP',   'Global Silver Miners',   'equity',    NULL,          'SLVP'),
   ('INTC',   'Intel',                  'equity',    NULL,          'INTC'),
-  ('BTC',    'Bitcoin',                'crypto',    NULL,          'BINANCE:BTCUSDT');
+  ('BTC',    'Bitcoin',                'crypto',    NULL,          'BINANCE:BTCUSDT'),
+  ('ETH',    'Ethereum',               'crypto',    NULL,          'BINANCE:ETHUSDT'),
+  ('XRP',    'XRP',                    'crypto',    NULL,          'BINANCE:XRPUSDT'),
+  ('SOL',    'Solana',                 'crypto',    NULL,          'BINANCE:SOLUSDT');
