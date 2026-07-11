@@ -1,5 +1,9 @@
 'use client'
 
+// History tab body: one row per graded 5-day check (✓/✗, called vs actual
+// direction, price move), a stats strip, and the grading formula rendered from
+// the same constants /api/calibrate actually grades with — so the explanation
+// can never drift from the real behavior.
 import type { AssetType, OutcomeWithSignal } from '@/types'
 import { OUTCOME_GRADING_AGE_DAYS, OUTCOME_THRESHOLDS } from '@/lib/scoring/constants'
 import { ASSET_TYPE_LABELS, directionColors, formatPrice, timeAgo } from '@/lib/format'

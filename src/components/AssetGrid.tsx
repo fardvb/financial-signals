@@ -1,13 +1,13 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+// The whole interactive dashboard shell: sticky header (search + hamburger),
+// side menu (Signals/History nav, direction/type filters, price sort), the
+// asset card grid, the History tab, and the per-asset detail modal. Gets all
+// data as props from the server page; its only own fetch is /api/quotes polling.
+import { useEffect, useMemo, useState } from 'react'
 import type { AssetType, OutcomeWithSignal, SignalDirection, SignalSource, WatchlistAsset } from '@/types'
 import type { SignalRow } from '@/app/page'
-import TradingViewChart, {
-  tradingViewSymbol,
-  TradingViewSingleQuote,
-  TradingViewTickerTape,
-} from '@/components/TradingViewChart'
+import TradingViewChart, { tradingViewSymbol, TradingViewSingleQuote } from '@/components/TradingViewChart'
 import HistoryList from '@/components/HistoryList'
 import { ASSET_TYPE_LABELS, directionColors, formatPrice, timeAgo } from '@/lib/format'
 
@@ -21,12 +21,32 @@ export interface CardData {
 
 type DirectionFilter = 'all' | SignalDirection
 type AssetTypeFilter = 'all' | AssetType
+type PriceSort = 'default' | 'high' | 'low'
 type Tab = 'signals' | 'history'
+
+const PRICE_SORT_LABELS: Record<PriceSort, string> = {
+  default: 'Default',
+  high: 'High → low',
+  low: 'Low → high',
+}
 
 // Source URLs come from third-party news data; never render a non-http(s)
 // scheme (javascript:, data:) as a clickable link.
 function isSafeUrl(url: string): boolean {
   return /^https?:\/\//i.test(url)
+}
+
+// While a full-screen layer (modal, side menu) is open, stop the page behind it
+// from scrolling — otherwise touch-scrolling the layer also scrolls the page.
+function useBodyScrollLock(locked: boolean) {
+  useEffect(() => {
+    if (!locked) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [locked])
 }
 
 // Displayed breakdown is normalized to sum to 100% for readability, even though the
@@ -90,6 +110,128 @@ function PriceLine({ asset, price }: { asset: WatchlistAsset; price: number | nu
       {asset.asset_type === 'forex' ? '' : '$'}{formatPrice(price)}
       <span className="text-zinc-500">{priceUnit(asset)}</span>
     </span>
+  )
+}
+
+function HamburgerIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5" aria-hidden="true">
+      <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function SlidersIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4" aria-hidden="true">
+      <path d="M3 6h18M3 12h18M3 18h18" strokeLinecap="round" />
+      <circle cx="9" cy="6" r="2.5" fill="currentColor" stroke="none" />
+      <circle cx="16" cy="12" r="2.5" fill="currentColor" stroke="none" />
+      <circle cx="7" cy="18" r="2.5" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+function SideMenu({
+  open,
+  onClose,
+  tab,
+  onSelectTab,
+  direction,
+  onDirection,
+  assetType,
+  onAssetType,
+  priceSort,
+  onPriceSort,
+  countLabel,
+}: {
+  open: boolean
+  onClose: () => void
+  tab: Tab
+  onSelectTab: (tab: Tab) => void
+  direction: DirectionFilter
+  onDirection: (d: DirectionFilter) => void
+  assetType: AssetTypeFilter
+  onAssetType: (t: AssetTypeFilter) => void
+  priceSort: PriceSort
+  onPriceSort: (s: PriceSort) => void
+  countLabel: string
+}) {
+  useBodyScrollLock(open)
+  if (!open) return null
+
+  const navItem = (active: boolean) =>
+    `w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+      active ? 'bg-zinc-100 text-zinc-900' : 'text-zinc-300 hover:bg-zinc-900'
+    }`
+
+  return (
+    <div className="fixed inset-0 z-[70]">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <aside
+        className="absolute right-0 top-0 h-full w-72 max-w-[85vw] bg-zinc-950 border-l border-zinc-800 overflow-y-auto overscroll-contain p-4 space-y-1"
+        data-testid="side-menu"
+      >
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-semibold text-zinc-100">Menu</span>
+          <button onClick={onClose} aria-label="Close menu" className="text-zinc-500 hover:text-zinc-200 px-2 py-1">
+            ✕
+          </button>
+        </div>
+
+        <button onClick={() => onSelectTab('signals')} data-testid="menu-signals" className={navItem(tab === 'signals')}>
+          Signals
+        </button>
+
+        {tab === 'signals' && (
+          <div className="ml-2 pl-3 border-l border-zinc-800 py-2 space-y-4" data-testid="menu-filters">
+            <div className="flex items-center gap-2 text-xs font-medium text-zinc-300">
+              <SlidersIcon />
+              Filters
+            </div>
+
+            <div>
+              <div className="text-xs text-zinc-600 mb-1.5">Direction</div>
+              <div className="flex flex-wrap gap-1.5" data-testid="direction-filters">
+                {(['all', 'buy', 'sell', 'hold'] as DirectionFilter[]).map(d => (
+                  <FilterChip key={d} active={direction === d} onClick={() => onDirection(d)}>
+                    {d === 'all' ? 'All' : d[0].toUpperCase() + d.slice(1)}
+                  </FilterChip>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs text-zinc-600 mb-1.5">Asset type</div>
+              <div className="flex flex-wrap gap-1.5" data-testid="type-filters">
+                {(['all', 'index', 'commodity', 'equity', 'forex', 'crypto'] as AssetTypeFilter[]).map(t => (
+                  <FilterChip key={t} active={assetType === t} onClick={() => onAssetType(t)}>
+                    {t === 'all' ? 'All' : ASSET_TYPE_LABELS[t]}
+                  </FilterChip>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs text-zinc-600 mb-1.5">Sort by price</div>
+              <div className="flex flex-wrap gap-1.5" data-testid="price-sort">
+                {(['default', 'high', 'low'] as PriceSort[]).map(s => (
+                  <FilterChip key={s} active={priceSort === s} onClick={() => onPriceSort(s)}>
+                    {PRICE_SORT_LABELS[s]}
+                  </FilterChip>
+                ))}
+              </div>
+            </div>
+
+            <div className="text-xs text-zinc-600">{countLabel}</div>
+          </div>
+        )}
+
+        <button onClick={() => onSelectTab('history')} data-testid="menu-history" className={navItem(tab === 'history')}>
+          History
+        </button>
+      </aside>
+    </div>
   )
 }
 
@@ -186,10 +328,14 @@ function AssetCard({ data, onOpen }: { data: CardData; onOpen: () => void }) {
 function AssetDetailModal({ data, onClose }: { data: CardData; onClose: () => void }) {
   const { asset, latest, accuracy, price } = data
   const colors = latest ? directionColors(latest.direction) : null
+  useBodyScrollLock(true)
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center overflow-y-auto p-4 md:p-10"
+      // z-[60] keeps the modal above the fixed disclaimer banner (z-50), which used
+      // to cover the bottom of the modal on phones; overscroll-contain plus the body
+      // scroll lock stops scrolling from leaking to the page behind.
+      className="fixed inset-0 z-[60] bg-black/70 flex items-start justify-center overflow-y-auto overscroll-contain p-4 md:p-10"
       onClick={onClose}
     >
       <div
@@ -221,8 +367,8 @@ function AssetDetailModal({ data, onClose }: { data: CardData; onClose: () => vo
           <TradingViewChart asset={asset} />
           <div className="text-xs text-zinc-600">
             Live price &amp; chart: {tradingViewSymbol(asset)} (TradingView) — the instrument this asset&apos;s
-            signals are quoted and graded against. The price in the header above is the Finnhub snapshot taken
-            when the page loaded (the feed grading uses); a small gap vs. the live stream is timing, not an error.
+            signals are quoted and graded against. The price in the header above is the Finnhub quote the app
+            grades with, refreshed about once a minute; a small gap vs. the live stream is timing, not an error.
           </div>
         </div>
 
@@ -406,28 +552,68 @@ export default function AssetGrid({
   latestRun?: string
 }) {
   const [tab, setTab] = useState<Tab>('signals')
+  const [menuOpen, setMenuOpen] = useState(false)
   const [direction, setDirection] = useState<DirectionFilter>('all')
   const [assetType, setAssetType] = useState<AssetTypeFilter>('all')
-  const [selected, setSelected] = useState<CardData | null>(null)
+  const [priceSort, setPriceSort] = useState<PriceSort>('default')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
+  const [livePrices, setLivePrices] = useState<Record<string, number | null> | null>(null)
 
-  // Stable identities so the ticker-tape effect doesn't reload the widget on
-  // every filter click re-render.
-  const tickerAssets = useMemo(() => cards.map(c => c.asset), [cards])
-  const cardByAssetId = useMemo(() => new Map(cards.map(c => [c.asset.id, c])), [cards])
+  // Poll /api/quotes so card prices track the market while the page sits open,
+  // instead of freezing at the page-load snapshot. Skips ticks while the tab is
+  // hidden to spare the Finnhub quota.
+  useEffect(() => {
+    let cancelled = false
+    const tick = async () => {
+      if (document.hidden) return
+      try {
+        const res = await fetch('/api/quotes')
+        if (!res.ok) return
+        const json: { prices?: Record<string, number | null> } = await res.json()
+        if (!cancelled && json.prices) setLivePrices(json.prices)
+      } catch {
+        // transient network failure — just wait for the next tick
+      }
+    }
+    const id = setInterval(tick, 60_000)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+    }
+  }, [])
+
+  const liveCards = useMemo(
+    () =>
+      livePrices
+        ? cards.map(c => ({ ...c, price: livePrices[c.asset.id] ?? c.price }))
+        : cards,
+    [cards, livePrices]
+  )
+
+  const selected = selectedId ? liveCards.find(c => c.asset.id === selectedId) ?? null : null
 
   const q = query.trim().toLowerCase()
   const matchesText = (asset: WatchlistAsset) =>
     q === '' || asset.ticker.toLowerCase().includes(q) || asset.name.toLowerCase().includes(q)
 
-  const filtered = cards.filter(c => {
+  const filtered = liveCards.filter(c => {
     if (direction !== 'all' && c.latest?.direction !== direction) return false
     if (assetType !== 'all' && c.asset.asset_type !== assetType) return false
     return matchesText(c.asset)
   })
 
-  // The same menu-bar filters drive the history tab: direction matches the
-  // signal's call (not the actual outcome), type/search match the asset.
+  if (priceSort !== 'default') {
+    filtered.sort((a, b) => {
+      if (a.price == null && b.price == null) return 0
+      if (a.price == null) return 1
+      if (b.price == null) return -1
+      return priceSort === 'high' ? b.price - a.price : a.price - b.price
+    })
+  }
+
+  // The same menu filters drive the history tab: direction matches the signal's
+  // call (not the actual outcome), type/search match the asset.
   const filteredOutcomes = outcomes.filter(o => {
     if (direction !== 'all' && o.signals.direction !== direction) return false
     if (assetType !== 'all' && o.signals.watchlist.asset_type !== assetType) return false
@@ -436,74 +622,70 @@ export default function AssetGrid({
 
   const countLabel =
     tab === 'signals'
-      ? `${filtered.length} of ${cards.length} assets`
+      ? `${filtered.length} of ${liveCards.length} assets`
       : `${filteredOutcomes.length} of ${outcomes.length} checks`
+
+  const filtersActive = direction !== 'all' || assetType !== 'all' || priceSort !== 'default'
 
   return (
     <div>
-      <header className="sticky top-0 z-40 bg-zinc-950/90 backdrop-blur border-b border-zinc-800">
-        <div className="px-6 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <div className="flex items-center gap-5 min-w-0">
-            <div className="min-w-0">
-              <h1 className="font-semibold text-zinc-100 tracking-tight">Market Signals</h1>
-              <p className="text-xs text-zinc-500">Personal observation tool</p>
-            </div>
-            <nav className="flex items-center rounded-lg border border-zinc-800 bg-zinc-900 p-0.5" data-testid="tab-bar">
-              {(['signals', 'history'] as Tab[]).map(t => (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  aria-pressed={tab === t}
-                  data-testid={`tab-${t}`}
-                  className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${
-                    tab === t ? 'bg-zinc-100 text-zinc-900' : 'text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
-                  {t === 'signals' ? 'Signals' : 'History'}
-                </button>
-              ))}
-            </nav>
-          </div>
-          <div className="flex items-center gap-4">
-            {latestRun && (
-              <div className="hidden sm:block text-xs text-zinc-500 whitespace-nowrap">Updated {timeAgo(latestRun)}</div>
-            )}
-            <SearchBox
-              cards={cards}
-              query={query}
-              onQueryChange={setQuery}
-              onPick={card => { setSelected(card); setQuery('') }}
-            />
-          </div>
+      <header className="sticky top-0 z-40 bg-zinc-950/90 backdrop-blur border-b border-zinc-800 px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="font-semibold text-zinc-100 tracking-tight">Market Signals</h1>
+          <p className="text-xs text-zinc-500">Personal observation tool</p>
         </div>
-
-        <div className="px-6 pb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <div className="flex items-center gap-1.5" data-testid="direction-filters">
-            <span className="text-xs text-zinc-600 mr-1">Direction</span>
-            {(['all', 'buy', 'sell', 'hold'] as DirectionFilter[]).map(d => (
-              <FilterChip key={d} active={direction === d} onClick={() => setDirection(d)}>
-                {d === 'all' ? 'All' : d[0].toUpperCase() + d.slice(1)}
-              </FilterChip>
-            ))}
-          </div>
-          <div className="flex items-center gap-1.5" data-testid="type-filters">
-            <span className="text-xs text-zinc-600 mr-1">Type</span>
-            {(['all', 'index', 'commodity', 'equity', 'forex', 'crypto'] as AssetTypeFilter[]).map(t => (
-              <FilterChip key={t} active={assetType === t} onClick={() => setAssetType(t)}>
-                {t === 'all' ? 'All' : ASSET_TYPE_LABELS[t]}
-              </FilterChip>
-            ))}
-          </div>
-          <span className="text-xs text-zinc-600">{countLabel}</span>
+        <div className="flex items-center gap-3">
+          {latestRun && (
+            <div className="hidden sm:block text-xs text-zinc-500 whitespace-nowrap">Updated {timeAgo(latestRun)}</div>
+          )}
+          <SearchBox
+            cards={liveCards}
+            query={query}
+            onQueryChange={setQuery}
+            onPick={card => { setSelectedId(card.asset.id); setQuery('') }}
+          />
+          <button
+            onClick={() => setMenuOpen(true)}
+            aria-label="Open menu"
+            data-testid="menu-button"
+            className="relative shrink-0 p-2 rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-600 hover:text-zinc-100 transition-colors"
+          >
+            <HamburgerIcon />
+            {filtersActive && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-sky-500" />}
+          </button>
         </div>
       </header>
 
-      <TradingViewTickerTape assets={tickerAssets} />
+      <SideMenu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        tab={tab}
+        onSelectTab={t => {
+          setTab(t)
+          // History has no sub-options, so jump straight to it; Signals stays
+          // open to reveal the filter section underneath.
+          if (t === 'history') setMenuOpen(false)
+        }}
+        direction={direction}
+        onDirection={setDirection}
+        assetType={assetType}
+        onAssetType={setAssetType}
+        priceSort={priceSort}
+        onPriceSort={setPriceSort}
+        countLabel={countLabel}
+      />
+
+      <div className="mx-auto max-w-6xl px-4 pt-5 flex items-baseline justify-between gap-3">
+        <h2 className="text-sm font-semibold text-zinc-200 uppercase tracking-wide">
+          {tab === 'signals' ? 'Signals' : 'History'}
+        </h2>
+        <span className="text-xs text-zinc-600">{countLabel}</span>
+      </div>
 
       {tab === 'signals' ? (
-        <div className="mx-auto max-w-6xl px-4 py-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="mx-auto max-w-6xl px-4 py-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map(data => (
-            <AssetCard key={data.asset.id} data={data} onOpen={() => setSelected(data)} />
+            <AssetCard key={data.asset.id} data={data} onOpen={() => setSelectedId(data.asset.id)} />
           ))}
           {filtered.length === 0 && (
             <div className="col-span-full text-center text-sm text-zinc-600 py-10">
@@ -512,21 +694,18 @@ export default function AssetGrid({
           )}
         </div>
       ) : (
-        <div className="mx-auto max-w-6xl px-4 py-6">
+        <div className="mx-auto max-w-6xl px-4 py-4">
           <HistoryList
             outcomes={filteredOutcomes}
             pendingCount={pendingCount}
             lastCheckedAt={outcomes[0]?.checked_at}
             capped={outcomesCapped}
-            onOpenAsset={assetId => {
-              const card = cardByAssetId.get(assetId)
-              if (card) setSelected(card)
-            }}
+            onOpenAsset={setSelectedId}
           />
         </div>
       )}
 
-      {selected && <AssetDetailModal data={selected} onClose={() => setSelected(null)} />}
+      {selected && <AssetDetailModal data={selected} onClose={() => setSelectedId(null)} />}
     </div>
   )
 }

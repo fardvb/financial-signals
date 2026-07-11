@@ -1,3 +1,7 @@
+// Dashboard entry point. Server component: runs every data query (watchlist,
+// recent signals, calibration accuracy, graded outcomes for the History tab) plus
+// a page-load Finnhub quote per asset, then hands plain props to the client-side
+// AssetGrid. All interactivity (tabs, filters, live price polling) lives there.
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { WatchlistAsset, Signal, CalibrationProfile, OutcomeWithSignal } from '@/types'
 import { MIN_N_FOR_DASHBOARD_DISPLAY, outcomeGradeCutoffISO } from '@/lib/scoring/constants'

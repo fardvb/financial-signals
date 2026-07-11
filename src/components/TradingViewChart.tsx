@@ -84,33 +84,3 @@ export function TradingViewSingleQuote({ asset }: { asset: WatchlistAsset }) {
 
   return <div ref={containerRef} className="tradingview-widget-container" data-testid="tv-single-quote" />
 }
-
-// One iframe streaming live TradingView prices for the whole watchlist — a per-card
-// quote widget would mean 20+ iframes on the grid, so the tape covers the grid view.
-export function TradingViewTickerTape({ assets }: { assets: WatchlistAsset[] }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const container = containerRef.current
-    if (!container || assets.length === 0) return
-
-    injectWidget(container, 'embed-widget-ticker-tape.js', {
-      symbols: assets.map(a => ({ proName: tradingViewSymbol(a), title: a.ticker })),
-      showSymbolLogo: true,
-      isTransparent: true,
-      displayMode: 'adaptive',
-      colorTheme: 'dark',
-      locale: 'en',
-    })
-
-    return () => {
-      container.replaceChildren()
-    }
-  }, [assets])
-
-  return (
-    <div className="border-b border-zinc-800">
-      <div ref={containerRef} className="tradingview-widget-container" data-testid="tv-ticker-tape" />
-    </div>
-  )
-}

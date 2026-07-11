@@ -1,3 +1,7 @@
+// The signal-generation half of the pipeline. Runs every 12h via GitHub Actions:
+// per watchlist asset, pulls Finnhub news, triages with a small Groq model,
+// synthesizes a buy/sell/hold observation with a larger one, scores confidence
+// with the formula in src/lib/scoring, and inserts into `signals`.
 import { NextRequest, NextResponse } from 'next/server'
 import Groq from 'groq-sdk'
 import { createClient } from '@supabase/supabase-js'

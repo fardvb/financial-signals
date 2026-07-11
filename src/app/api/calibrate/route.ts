@@ -1,3 +1,7 @@
+// The self-grading half of the pipeline. Runs daily via GitHub Actions: grades
+// every signal that just turned OUTCOME_GRADING_AGE_DAYS old against the real
+// price move (→ signal_outcomes), then folds results into the decayed per-asset
+// hit-rate profiles (→ calibration_profiles) that future confidence scores use.
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { guardCronRequest } from '@/lib/apiAuth'
