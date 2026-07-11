@@ -1,12 +1,31 @@
 'use client'
 
-// History tab body: one row per graded 5-day check (✓/✗, called vs actual
-// direction, price move), a stats strip, and the grading formula rendered from
+// Past Signals tab body: one row per graded 5-day check (✓/✗, called vs actual
+// direction, price move), a time-range picker (today/week/month/year so the list
+// doesn't grow forever), a stats strip, and the grading formula rendered from
 // the same constants /api/calibrate actually grades with — so the explanation
 // can never drift from the real behavior.
+import { useState } from 'react'
 import type { AssetType, OutcomeWithSignal } from '@/types'
 import { OUTCOME_GRADING_AGE_DAYS, OUTCOME_THRESHOLDS } from '@/lib/scoring/constants'
-import { ASSET_TYPE_LABELS, directionColors, formatPrice, timeAgo } from '@/lib/format'
+import FilterChip from '@/components/FilterChip'
+import { ASSET_TYPE_LABELS, directionColors, formatPrice, timeAgo, withinDays } from '@/lib/format'
+
+type HistoryRange = 'day' | 'week' | 'month' | 'year'
+
+const RANGE_LABELS: Record<HistoryRange, string> = {
+  day: 'Today',
+  week: 'Week',
+  month: 'Month',
+  year: 'Year',
+}
+
+const RANGE_DAYS: Record<HistoryRange, number> = {
+  day: 1,
+  week: 7,
+  month: 30,
+  year: 365,
+}
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -96,8 +115,13 @@ export default function HistoryList({
   capped: boolean
   onOpenAsset: (assetId: string) => void
 }) {
-  const correct = outcomes.filter(o => o.was_correct).length
-  const rate = outcomes.length > 0 ? Math.round((correct / outcomes.length) * 100) : null
+  // Checks land once a day, so "Today" keeps the default view short; the wider
+  // ranges are there for looking back without the list scrolling forever.
+  const [range, setRange] = useState<HistoryRange>('day')
+  const inRange = outcomes.filter(o => withinDays(o.checked_at, RANGE_DAYS[range]))
+
+  const correct = inRange.filter(o => o.was_correct).length
+  const rate = inRange.length > 0 ? Math.round((correct / inRange.length) * 100) : null
 
   const thresholds = (Object.entries(OUTCOME_THRESHOLDS) as [AssetType, number][])
     .map(([type, pct]) => `${ASSET_TYPE_LABELS[type]} ±${pct}%`)
@@ -105,11 +129,20 @@ export default function HistoryList({
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-1.5" data-testid="history-range">
+        <span className="text-xs text-zinc-600 mr-1">Showing</span>
+        {(['day', 'week', 'month', 'year'] as HistoryRange[]).map(r => (
+          <FilterChip key={r} active={range === r} onClick={() => setRange(r)}>
+            {RANGE_LABELS[r]}
+          </FilterChip>
+        ))}
+      </div>
+
       <div
         className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3"
         data-testid="history-stats"
       >
-        <Stat label="Graded checks" value={String(outcomes.length)} />
+        <Stat label="Graded checks" value={String(inRange.length)} />
         <Stat label="Correct" value={rate != null ? `${correct} · ${rate}%` : '—'} />
         <Stat label="Last check" value={lastCheckedAt ? timeAgo(lastCheckedAt) : '—'} />
         <Stat label="Waiting to be checked" value={String(pendingCount)} />
@@ -124,13 +157,14 @@ export default function HistoryList({
       </div>
 
       <div className="space-y-2" data-testid="history-list">
-        {outcomes.map(o => (
+        {inRange.map(o => (
           <OutcomeRow key={o.id} outcome={o} onOpen={() => onOpenAsset(o.signals.watchlist.id)} />
         ))}
-        {outcomes.length === 0 && (
+        {inRange.length === 0 && (
           <div className="text-center text-sm text-zinc-600 py-10">
-            No graded signals match these filters yet — signals are checked once they&apos;re{' '}
-            {OUTCOME_GRADING_AGE_DAYS} days old.
+            {range === 'day'
+              ? 'No checks today — grading runs once a day. Try Week or Month to look further back.'
+              : `No graded signals in this window match the filters — signals are checked once they're ${OUTCOME_GRADING_AGE_DAYS} days old.`}
           </div>
         )}
       </div>

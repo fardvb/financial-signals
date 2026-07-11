@@ -24,7 +24,8 @@ export default async function DashboardPage() {
 
   const [{ data: assets }, { data: signals }, { data: calibration }, { data: outcomes }, { count: pendingCount }] =
     await Promise.all([
-      db.from('watchlist').select('*').eq('active', true).order('asset_type').order('ticker'),
+      // Alphabetical by ticker — the dashboard's default "A–Z" order.
+      db.from('watchlist').select('*').eq('active', true).order('ticker'),
       db.from('signals').select('*, watchlist(*)').order('created_at', { ascending: false }).limit(120),
       db.from('calibration_profiles').select('*'),
       db

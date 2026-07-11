@@ -22,6 +22,13 @@ export function directionColors(d: SignalDirection) {
   return { badge: 'bg-zinc-800 text-zinc-300', dot: 'bg-zinc-500' }
 }
 
+// True when the timestamp falls within the last `days` days. (Kept out of
+// component bodies because eslint react-hooks/purity forbids bare Date.now()
+// there — see README gotcha #6.)
+export function withinDays(dateStr: string, days: number): boolean {
+  return Date.now() - new Date(dateStr).getTime() <= days * 24 * 60 * 60 * 1000
+}
+
 export function formatPrice(price: number): string {
   const decimals = price < 10 ? 4 : 2
   return price.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })

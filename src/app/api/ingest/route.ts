@@ -39,14 +39,19 @@ interface TriagedArticle extends FinnhubArticle {
   category: EventCategory
 }
 
-async function fetchFinnhubNews(asset: WatchlistAsset): Promise<FinnhubArticle[]> {
+async function fetchFinnhubNews(
+  asset: WatchlistAsset,
+  opts?: { forceGeneral?: boolean }
+): Promise<FinnhubArticle[]> {
   const token = process.env.FINNHUB_API_KEY!
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
   const from = sevenDaysAgo.toISOString().split('T')[0]
   const to = new Date().toISOString().split('T')[0]
 
   let url: string
-  if (asset.asset_type === 'equity') {
+  if (opts?.forceGeneral) {
+    url = `https://finnhub.io/api/v1/news?category=general&token=${token}`
+  } else if (asset.asset_type === 'equity') {
     url = `https://finnhub.io/api/v1/company-news?symbol=${asset.ticker}&from=${from}&to=${to}&token=${token}`
   } else if (asset.asset_type === 'forex') {
     url = `https://finnhub.io/api/v1/news?category=forex&token=${token}`
@@ -76,7 +81,9 @@ async function fetchFinnhubNews(asset: WatchlistAsset): Promise<FinnhubArticle[]
     }))
     .filter(a => a.headline.length > 0)
 
-  if (asset.asset_type !== 'equity') {
+  // Category feeds (general/forex/crypto) aren't date-scoped by the API the way
+  // company-news is, so apply the 7-day window ourselves.
+  if (asset.asset_type !== 'equity' || opts?.forceGeneral) {
     const cutoff = sevenDaysAgo.getTime() / 1000
     return articles.filter(a => a.datetime >= cutoff).slice(0, 40)
   }
@@ -321,14 +328,19 @@ export async function GET(request: NextRequest) {
       }
 
       const articles = await fetchFinnhubNews(asset)
-      if (articles.length === 0) {
-        results.push({ ticker: asset.ticker, status: 'no_news' })
-        continue
+      let relevant = articles.length > 0 ? await triageWithGroq(asset, articles) : []
+
+      // Thematic/small ETFs classified as equities (e.g. SLVP) get little or no
+      // Finnhub company news, which used to mean they never produced a signal at
+      // all. Fall back to the general market feed and let triage pick out what
+      // actually bears on the asset (for SLVP: silver / mining headlines).
+      if (relevant.length === 0 && asset.asset_type === 'equity') {
+        const general = await fetchFinnhubNews(asset, { forceGeneral: true })
+        if (general.length > 0) relevant = await triageWithGroq(asset, general)
       }
 
-      const relevant = await triageWithGroq(asset, articles)
       if (relevant.length === 0) {
-        results.push({ ticker: asset.ticker, status: 'no_relevant_news' })
+        results.push({ ticker: asset.ticker, status: articles.length === 0 ? 'no_news' : 'no_relevant_news' })
         continue
       }
 
