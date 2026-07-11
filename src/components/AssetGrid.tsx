@@ -1,9 +1,15 @@
 'use client'
 
-import { useState } from 'react'
-import type { AssetType, SignalDirection, SignalSource, WatchlistAsset } from '@/types'
+import { useMemo, useState } from 'react'
+import type { AssetType, OutcomeWithSignal, SignalDirection, SignalSource, WatchlistAsset } from '@/types'
 import type { SignalRow } from '@/app/page'
-import TradingViewChart, { tradingViewSymbol } from '@/components/TradingViewChart'
+import TradingViewChart, {
+  tradingViewSymbol,
+  TradingViewSingleQuote,
+  TradingViewTickerTape,
+} from '@/components/TradingViewChart'
+import HistoryList from '@/components/HistoryList'
+import { ASSET_TYPE_LABELS, directionColors, formatPrice, timeAgo } from '@/lib/format'
 
 export interface CardData {
   asset: WatchlistAsset
@@ -15,38 +21,12 @@ export interface CardData {
 
 type DirectionFilter = 'all' | SignalDirection
 type AssetTypeFilter = 'all' | AssetType
-
-const ASSET_TYPE_LABELS: Record<AssetType, string> = {
-  index: 'Index',
-  commodity: 'Commodity',
-  equity: 'Equity',
-  forex: 'Forex',
-  crypto: 'Crypto',
-}
+type Tab = 'signals' | 'history'
 
 // Source URLs come from third-party news data; never render a non-http(s)
 // scheme (javascript:, data:) as a clickable link.
 function isSafeUrl(url: string): boolean {
   return /^https?:\/\//i.test(url)
-}
-
-function timeAgo(dateStr: string): string {
-  const secs = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
-  if (secs < 60) return 'just now'
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
-  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`
-  return `${Math.floor(secs / 86400)}d ago`
-}
-
-function directionColors(d: SignalDirection) {
-  if (d === 'buy') return { badge: 'bg-emerald-900 text-emerald-300', dot: 'bg-emerald-500' }
-  if (d === 'sell') return { badge: 'bg-red-900 text-red-300', dot: 'bg-red-500' }
-  return { badge: 'bg-zinc-800 text-zinc-300', dot: 'bg-zinc-500' }
-}
-
-function formatPrice(price: number): string {
-  const decimals = price < 10 ? 4 : 2
-  return price.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
 }
 
 // Displayed breakdown is normalized to sum to 100% for readability, even though the
@@ -237,9 +217,12 @@ function AssetDetailModal({ data, onClose }: { data: CardData; onClose: () => vo
         </div>
 
         <div className="space-y-1.5">
+          <TradingViewSingleQuote asset={asset} />
           <TradingViewChart asset={asset} />
           <div className="text-xs text-zinc-600">
-            Chart: {tradingViewSymbol(asset)} — the instrument this asset&apos;s signals are quoted and graded against.
+            Live price &amp; chart: {tradingViewSymbol(asset)} (TradingView) — the instrument this asset&apos;s
+            signals are quoted and graded against. The price in the header above is the Finnhub snapshot taken
+            when the page loaded (the feed grading uses); a small gap vs. the live stream is timing, not an error.
           </div>
         </div>
 
@@ -409,70 +392,139 @@ function SearchBox({
   )
 }
 
-export default function AssetGrid({ cards, latestRun }: { cards: CardData[]; latestRun?: string }) {
+export default function AssetGrid({
+  cards,
+  outcomes,
+  pendingCount,
+  outcomesCapped,
+  latestRun,
+}: {
+  cards: CardData[]
+  outcomes: OutcomeWithSignal[]
+  pendingCount: number
+  outcomesCapped: boolean
+  latestRun?: string
+}) {
+  const [tab, setTab] = useState<Tab>('signals')
   const [direction, setDirection] = useState<DirectionFilter>('all')
   const [assetType, setAssetType] = useState<AssetTypeFilter>('all')
   const [selected, setSelected] = useState<CardData | null>(null)
   const [query, setQuery] = useState('')
 
+  // Stable identities so the ticker-tape effect doesn't reload the widget on
+  // every filter click re-render.
+  const tickerAssets = useMemo(() => cards.map(c => c.asset), [cards])
+  const cardByAssetId = useMemo(() => new Map(cards.map(c => [c.asset.id, c])), [cards])
+
   const q = query.trim().toLowerCase()
+  const matchesText = (asset: WatchlistAsset) =>
+    q === '' || asset.ticker.toLowerCase().includes(q) || asset.name.toLowerCase().includes(q)
+
   const filtered = cards.filter(c => {
     if (direction !== 'all' && c.latest?.direction !== direction) return false
     if (assetType !== 'all' && c.asset.asset_type !== assetType) return false
-    if (q !== '' && !c.asset.ticker.toLowerCase().includes(q) && !c.asset.name.toLowerCase().includes(q)) return false
-    return true
+    return matchesText(c.asset)
   })
+
+  // The same menu-bar filters drive the history tab: direction matches the
+  // signal's call (not the actual outcome), type/search match the asset.
+  const filteredOutcomes = outcomes.filter(o => {
+    if (direction !== 'all' && o.signals.direction !== direction) return false
+    if (assetType !== 'all' && o.signals.watchlist.asset_type !== assetType) return false
+    return matchesText(o.signals.watchlist)
+  })
+
+  const countLabel =
+    tab === 'signals'
+      ? `${filtered.length} of ${cards.length} assets`
+      : `${filteredOutcomes.length} of ${outcomes.length} checks`
 
   return (
     <div>
-      <header className="sticky top-0 z-40 bg-zinc-950/90 backdrop-blur border-b border-zinc-800 px-6 py-3 flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="font-semibold text-zinc-100 tracking-tight">Market Signals</h1>
-          <p className="text-xs text-zinc-500">Personal observation tool</p>
+      <header className="sticky top-0 z-40 bg-zinc-950/90 backdrop-blur border-b border-zinc-800">
+        <div className="px-6 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div className="flex items-center gap-5 min-w-0">
+            <div className="min-w-0">
+              <h1 className="font-semibold text-zinc-100 tracking-tight">Market Signals</h1>
+              <p className="text-xs text-zinc-500">Personal observation tool</p>
+            </div>
+            <nav className="flex items-center rounded-lg border border-zinc-800 bg-zinc-900 p-0.5" data-testid="tab-bar">
+              {(['signals', 'history'] as Tab[]).map(t => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  aria-pressed={tab === t}
+                  data-testid={`tab-${t}`}
+                  className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${
+                    tab === t ? 'bg-zinc-100 text-zinc-900' : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  {t === 'signals' ? 'Signals' : 'History'}
+                </button>
+              ))}
+            </nav>
+          </div>
+          <div className="flex items-center gap-4">
+            {latestRun && (
+              <div className="hidden sm:block text-xs text-zinc-500 whitespace-nowrap">Updated {timeAgo(latestRun)}</div>
+            )}
+            <SearchBox
+              cards={cards}
+              query={query}
+              onQueryChange={setQuery}
+              onPick={card => { setSelected(card); setQuery('') }}
+            />
+          </div>
         </div>
-        <div className="flex items-center gap-4">
-          {latestRun && (
-            <div className="hidden sm:block text-xs text-zinc-500 whitespace-nowrap">Updated {timeAgo(latestRun)}</div>
-          )}
-          <SearchBox
-            cards={cards}
-            query={query}
-            onQueryChange={setQuery}
-            onPick={card => { setSelected(card); setQuery('') }}
-          />
+
+        <div className="px-6 pb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="flex items-center gap-1.5" data-testid="direction-filters">
+            <span className="text-xs text-zinc-600 mr-1">Direction</span>
+            {(['all', 'buy', 'sell', 'hold'] as DirectionFilter[]).map(d => (
+              <FilterChip key={d} active={direction === d} onClick={() => setDirection(d)}>
+                {d === 'all' ? 'All' : d[0].toUpperCase() + d.slice(1)}
+              </FilterChip>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5" data-testid="type-filters">
+            <span className="text-xs text-zinc-600 mr-1">Type</span>
+            {(['all', 'index', 'commodity', 'equity', 'forex', 'crypto'] as AssetTypeFilter[]).map(t => (
+              <FilterChip key={t} active={assetType === t} onClick={() => setAssetType(t)}>
+                {t === 'all' ? 'All' : ASSET_TYPE_LABELS[t]}
+              </FilterChip>
+            ))}
+          </div>
+          <span className="text-xs text-zinc-600">{countLabel}</span>
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl px-4 pt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="flex items-center gap-1.5" data-testid="direction-filters">
-          <span className="text-xs text-zinc-600 mr-1">Direction</span>
-          {(['all', 'buy', 'sell', 'hold'] as DirectionFilter[]).map(d => (
-            <FilterChip key={d} active={direction === d} onClick={() => setDirection(d)}>
-              {d === 'all' ? 'All' : d[0].toUpperCase() + d.slice(1)}
-            </FilterChip>
-          ))}
-        </div>
-        <div className="flex items-center gap-1.5" data-testid="type-filters">
-          <span className="text-xs text-zinc-600 mr-1">Type</span>
-          {(['all', 'index', 'commodity', 'equity', 'forex', 'crypto'] as AssetTypeFilter[]).map(t => (
-            <FilterChip key={t} active={assetType === t} onClick={() => setAssetType(t)}>
-              {t === 'all' ? 'All' : ASSET_TYPE_LABELS[t]}
-            </FilterChip>
-          ))}
-        </div>
-        <span className="text-xs text-zinc-600">{filtered.length} of {cards.length}</span>
-      </div>
+      <TradingViewTickerTape assets={tickerAssets} />
 
-      <div className="mx-auto max-w-6xl px-4 py-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {filtered.map(data => (
-          <AssetCard key={data.asset.id} data={data} onOpen={() => setSelected(data)} />
-        ))}
-        {filtered.length === 0 && (
-          <div className="col-span-full text-center text-sm text-zinc-600 py-10">
-            No assets match these filters.
-          </div>
-        )}
-      </div>
+      {tab === 'signals' ? (
+        <div className="mx-auto max-w-6xl px-4 py-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {filtered.map(data => (
+            <AssetCard key={data.asset.id} data={data} onOpen={() => setSelected(data)} />
+          ))}
+          {filtered.length === 0 && (
+            <div className="col-span-full text-center text-sm text-zinc-600 py-10">
+              No assets match these filters.
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="mx-auto max-w-6xl px-4 py-6">
+          <HistoryList
+            outcomes={filteredOutcomes}
+            pendingCount={pendingCount}
+            lastCheckedAt={outcomes[0]?.checked_at}
+            capped={outcomesCapped}
+            onOpenAsset={assetId => {
+              const card = cardByAssetId.get(assetId)
+              if (card) setSelected(card)
+            }}
+          />
+        </div>
+      )}
 
       {selected && <AssetDetailModal data={selected} onClose={() => setSelected(null)} />}
     </div>

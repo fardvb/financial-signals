@@ -71,6 +71,13 @@ export interface SignalOutcome {
   checked_at: string
 }
 
+// Shape of the history-tab query: signal_outcomes with its signal and that
+// signal's asset embedded. outcome→signal is many-to-one, so PostgREST returns
+// `signals` as a single object (see the embed-shape lesson in /api/calibrate).
+export interface OutcomeWithSignal extends SignalOutcome {
+  signals: SignalWithAsset
+}
+
 export interface CalibrationProfile {
   id: string
   asset_id: string

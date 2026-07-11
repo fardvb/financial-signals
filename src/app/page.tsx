@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { WatchlistAsset, Signal, CalibrationProfile } from '@/types'
-import { MIN_N_FOR_DASHBOARD_DISPLAY } from '@/lib/scoring/constants'
+import type { WatchlistAsset, Signal, CalibrationProfile, OutcomeWithSignal } from '@/types'
+import { MIN_N_FOR_DASHBOARD_DISPLAY, outcomeGradeCutoffISO } from '@/lib/scoring/constants'
 import { getQuote } from '@/lib/finnhub/quote'
 import AssetGrid, { type CardData } from '@/components/AssetGrid'
 
@@ -10,18 +10,36 @@ export interface SignalRow extends Signal {
   watchlist: WatchlistAsset
 }
 
+// The history tab shows at most this many recent graded checks.
+const OUTCOME_HISTORY_LIMIT = 200
+
 export default async function DashboardPage() {
   const db = createAdminClient()
 
-  const [{ data: assets }, { data: signals }, { data: calibration }] = await Promise.all([
-    db.from('watchlist').select('*').eq('active', true).order('asset_type').order('ticker'),
-    db.from('signals').select('*, watchlist(*)').order('created_at', { ascending: false }).limit(120),
-    db.from('calibration_profiles').select('*'),
-  ])
+  const gradeCutoff = outcomeGradeCutoffISO()
+
+  const [{ data: assets }, { data: signals }, { data: calibration }, { data: outcomes }, { count: pendingCount }] =
+    await Promise.all([
+      db.from('watchlist').select('*').eq('active', true).order('asset_type').order('ticker'),
+      db.from('signals').select('*, watchlist(*)').order('created_at', { ascending: false }).limit(120),
+      db.from('calibration_profiles').select('*'),
+      db
+        .from('signal_outcomes')
+        .select('*, signals(*, watchlist(*))')
+        .order('checked_at', { ascending: false })
+        .limit(OUTCOME_HISTORY_LIMIT),
+      // Signals still too young to grade — the history tab's "waiting to be checked" count.
+      db
+        .from('signals')
+        .select('id', { count: 'exact', head: true })
+        .gt('created_at', gradeCutoff)
+        .not('price_at_signal', 'is', null),
+    ])
 
   const watchlist = (assets ?? []) as WatchlistAsset[]
   const signalRows = (signals ?? []) as SignalRow[]
   const calibrationRows = (calibration ?? []) as CalibrationProfile[]
+  const outcomeRows = ((outcomes ?? []) as unknown as OutcomeWithSignal[]).filter(o => o.signals?.watchlist)
 
   const quotes = await Promise.all(watchlist.map(asset => getQuote(asset.price_symbol)))
   const priceByAsset: Record<string, number | null> = {}
@@ -53,7 +71,13 @@ export default async function DashboardPage() {
 
   return (
     <main className="min-h-screen pb-20">
-      <AssetGrid cards={cards} latestRun={latestRun} />
+      <AssetGrid
+        cards={cards}
+        outcomes={outcomeRows}
+        pendingCount={pendingCount ?? 0}
+        outcomesCapped={outcomeRows.length >= OUTCOME_HISTORY_LIMIT}
+        latestRun={latestRun}
+      />
     </main>
   )
 }

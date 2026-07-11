@@ -16,6 +16,16 @@ export function tradingViewSymbol(asset: WatchlistAsset): string {
   return asset.price_symbol
 }
 
+// Every TradingView embed works the same way: a script tag whose body is the
+// widget's config JSON, injected into a container div.
+function injectWidget(container: HTMLElement, scriptFile: string, config: Record<string, unknown>) {
+  const script = document.createElement('script')
+  script.src = `https://s3.tradingview.com/external-embedding/${scriptFile}`
+  script.async = true
+  script.innerHTML = JSON.stringify(config)
+  container.appendChild(script)
+}
+
 export default function TradingViewChart({ asset }: { asset: WatchlistAsset }) {
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -23,10 +33,7 @@ export default function TradingViewChart({ asset }: { asset: WatchlistAsset }) {
     const container = containerRef.current
     if (!container) return
 
-    const script = document.createElement('script')
-    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js'
-    script.async = true
-    script.innerHTML = JSON.stringify({
+    injectWidget(container, 'embed-widget-advanced-chart.js', {
       autosize: true,
       symbol: tradingViewSymbol(asset),
       interval: 'D',
@@ -39,7 +46,6 @@ export default function TradingViewChart({ asset }: { asset: WatchlistAsset }) {
       hide_top_toolbar: false,
       support_host: 'https://www.tradingview.com',
     })
-    container.appendChild(script)
 
     return () => {
       container.replaceChildren()
@@ -49,6 +55,62 @@ export default function TradingViewChart({ asset }: { asset: WatchlistAsset }) {
   return (
     <div className="rounded-lg overflow-hidden border border-zinc-800" style={{ height: 380 }}>
       <div ref={containerRef} className="tradingview-widget-container h-full" />
+    </div>
+  )
+}
+
+// Live streaming price from TradingView — the same feed the chart renders, so this
+// number always matches the chart (unlike the page-load Finnhub snapshot, which can
+// drift a fraction of a percent while the page sits open).
+export function TradingViewSingleQuote({ asset }: { asset: WatchlistAsset }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    injectWidget(container, 'embed-widget-single-quote.js', {
+      symbol: tradingViewSymbol(asset),
+      width: '100%',
+      colorTheme: 'dark',
+      isTransparent: true,
+      locale: 'en',
+    })
+
+    return () => {
+      container.replaceChildren()
+    }
+  }, [asset])
+
+  return <div ref={containerRef} className="tradingview-widget-container" data-testid="tv-single-quote" />
+}
+
+// One iframe streaming live TradingView prices for the whole watchlist — a per-card
+// quote widget would mean 20+ iframes on the grid, so the tape covers the grid view.
+export function TradingViewTickerTape({ assets }: { assets: WatchlistAsset[] }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container || assets.length === 0) return
+
+    injectWidget(container, 'embed-widget-ticker-tape.js', {
+      symbols: assets.map(a => ({ proName: tradingViewSymbol(a), title: a.ticker })),
+      showSymbolLogo: true,
+      isTransparent: true,
+      displayMode: 'adaptive',
+      colorTheme: 'dark',
+      locale: 'en',
+    })
+
+    return () => {
+      container.replaceChildren()
+    }
+  }, [assets])
+
+  return (
+    <div className="border-b border-zinc-800">
+      <div ref={containerRef} className="tradingview-widget-container" data-testid="tv-ticker-tape" />
     </div>
   )
 }

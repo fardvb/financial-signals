@@ -44,3 +44,9 @@ export const DEDUP_WINDOW_HOURS = 6
 
 // Signals must be at least this many days old before /api/calibrate will grade them.
 export const OUTCOME_GRADING_AGE_DAYS = 5
+
+// ISO timestamp of the oldest creation time that is still too young to grade —
+// signals created after this are "waiting to be checked".
+export function outcomeGradeCutoffISO(): string {
+  return new Date(Date.now() - OUTCOME_GRADING_AGE_DAYS * 24 * 60 * 60 * 1000).toISOString()
+}
