@@ -711,18 +711,22 @@ export default function AssetGrid({
 
       {/* Fixed (not inside the header) so it stays above the open menu's backdrop
           and can morph into the X that closes it. The sticky header keeps this
-          spot visually "in" the header at all times. */}
-      <button
-        onClick={() => setMenuOpen(o => !o)}
-        aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-        data-testid="menu-button"
-        className="fixed right-4 sm:right-6 top-3.5 z-[80] p-2 rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-600 hover:text-zinc-100 transition-colors"
-      >
-        <MenuToggleIcon open={menuOpen} />
-        {filtersActive && !menuOpen && (
-          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-sky-500" />
-        )}
-      </button>
+          spot visually "in" the header at all times. Hidden while the detail
+          modal is open: at z-[80] it would poke through the modal (z-[60]) and
+          sit right on top of the modal's own ✕. */}
+      {!selected && (
+        <button
+          onClick={() => setMenuOpen(o => !o)}
+          aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+          data-testid="menu-button"
+          className="fixed right-4 sm:right-6 top-3.5 z-[80] p-2 rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-600 hover:text-zinc-100 transition-colors"
+        >
+          <MenuToggleIcon open={menuOpen} />
+          {filtersActive && !menuOpen && (
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-sky-500" />
+          )}
+        </button>
+      )}
 
       <SideMenu
         open={menuOpen}
