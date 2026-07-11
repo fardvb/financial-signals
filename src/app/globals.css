@@ -19,6 +19,13 @@
   }
 }
 
+html {
+  /* Keep the scrollbar's space reserved even while the side menu / detail view
+     lock background scrolling (overflow: hidden) — otherwise the scrollbar
+     vanishes and the whole page shifts sideways by its width. */
+  scrollbar-gutter: stable;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

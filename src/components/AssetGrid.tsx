@@ -342,13 +342,19 @@ function AssetCard({ data, onOpen }: { data: CardData; onOpen: () => void }) {
 
       {latest ? (
         <div>
-          <div className="h-1 rounded-full bg-zinc-800">
-            <div className="h-full rounded-full bg-sky-500" style={{ width: `${latest.confidence}%` }} />
-          </div>
-          <div className="flex justify-between text-[10px] text-zinc-600 mt-1">
+          <div className="flex justify-between text-[10px] text-zinc-600 mb-1">
+            <span>Confidence</span>
             <span>{latest.confidence}%</span>
-            <span>{timeAgo(latest.created_at)}</span>
           </div>
+          {/* Bar takes the signal's direction color (user-requested 2026-07-11,
+              superseding the earlier neutral-blue decision). */}
+          <div className="h-1 rounded-full bg-zinc-800">
+            <div
+              className={`h-full rounded-full ${directionColors(latest.direction).dot}`}
+              style={{ width: `${latest.confidence}%` }}
+            />
+          </div>
+          <div className="text-right text-[10px] text-zinc-600 mt-1">{timeAgo(latest.created_at)}</div>
         </div>
       ) : (
         <div className="text-[10px] text-zinc-600 italic">no signal yet</div>
