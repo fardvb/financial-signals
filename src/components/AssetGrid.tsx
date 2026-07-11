@@ -100,11 +100,16 @@ function PriceLine({ asset, price }: { asset: WatchlistAsset; price: number | nu
   )
 }
 
-function HamburgerIcon() {
+// Three bars that morph into an X while the menu is open: outer bars rotate
+// into the diagonals, the middle bar fades out.
+function MenuToggleIcon({ open }: { open: boolean }) {
+  const bar = 'absolute left-0 h-0.5 w-5 rounded bg-current transition-all duration-200 ease-out'
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5" aria-hidden="true">
-      <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
-    </svg>
+    <span className="relative block w-5 h-4" aria-hidden="true">
+      <span className={`${bar} ${open ? 'top-[7px] rotate-45' : 'top-0'}`} />
+      <span className={`${bar} top-[7px] ${open ? 'opacity-0' : 'opacity-100'}`} />
+      <span className={`${bar} ${open ? 'top-[7px] -rotate-45' : 'top-[14px]'}`} />
+    </span>
   )
 }
 
@@ -163,16 +168,14 @@ function SideMenu({
 
   return (
     <div className="fixed inset-0 z-[70]">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 animate-[fade-in_200ms_ease-out]" onClick={onClose} />
       <aside
-        className="absolute right-0 top-0 h-full w-72 max-w-[85vw] bg-zinc-950 border-l border-zinc-800 overflow-y-auto overscroll-contain p-4 space-y-1"
+        className="absolute right-0 top-0 h-full w-72 max-w-[85vw] bg-zinc-950 border-l border-zinc-800 overflow-y-auto overscroll-contain p-4 space-y-1 animate-[drawer-in_200ms_ease-out]"
         data-testid="side-menu"
       >
-        <div className="flex items-center justify-between mb-2">
+        {/* No close button here — the floating hamburger morphs into an X and stays on top. */}
+        <div className="mb-2 py-1">
           <span className="text-sm font-semibold text-zinc-100">Menu</span>
-          <button onClick={onClose} aria-label="Close menu" className="text-zinc-500 hover:text-zinc-200 px-2 py-1">
-            ✕
-          </button>
         </div>
 
         <button
@@ -197,16 +200,16 @@ function SideMenu({
           </svg>
         </button>
 
-        <button
-          onClick={() => onSelectTab('history')}
-          data-testid="menu-history"
-          className={navItem(tab === 'history')}
+        {/* Always mounted so the grid-rows accordion can animate open/closed;
+            it sits directly under Signals and pushes Past Signals down smoothly. */}
+        <div
+          className={`grid transition-[grid-template-rows] duration-200 ease-out ${
+            filtersOpen && tab === 'signals' ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+          }`}
+          data-testid="menu-filters"
         >
-          <span>Past Signals</span>
-        </button>
-
-        {filtersOpen && tab === 'signals' && (
-          <div className="ml-2 pl-3 border-l border-zinc-800 py-2 space-y-4" data-testid="menu-filters">
+          <div className="overflow-hidden">
+            <div className="ml-2 pl-3 border-l border-zinc-800 py-2 space-y-4">
             <div className="flex items-center gap-2 text-xs font-medium text-zinc-300">
               <SlidersIcon />
               Filters
@@ -256,9 +259,18 @@ function SideMenu({
               </div>
             </div>
 
-            <div className="text-xs text-zinc-600">{countLabel}</div>
+              <div className="text-xs text-zinc-600">{countLabel}</div>
+            </div>
           </div>
-        )}
+        </div>
+
+        <button
+          onClick={() => onSelectTab('history')}
+          data-testid="menu-history"
+          className={navItem(tab === 'history')}
+        >
+          <span>Past Signals</span>
+        </button>
       </aside>
     </div>
   )
@@ -298,91 +310,48 @@ function CompactRow({ data, onOpen }: { data: CardData; onOpen: () => void }) {
   )
 }
 
+// Minimal trading-app tile: ticker, price, direction, confidence — no prose.
+// The reasoning, sources, and breakdown live in the detail view a click away.
 function AssetCard({ data, onOpen }: { data: CardData; onOpen: () => void }) {
-  const { asset, latest, history, accuracy, price } = data
+  const { asset, latest, price } = data
   const colors = latest ? directionColors(latest.direction) : null
 
   return (
     <button
       onClick={onOpen}
       data-testid={`asset-card-${asset.ticker}`}
-      className="text-left rounded-xl border border-zinc-800 bg-zinc-900 p-4 flex flex-col gap-3 transition-colors hover:border-zinc-600 hover:bg-zinc-850 focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+      className="text-left rounded-xl border border-zinc-800 bg-zinc-900 p-3.5 flex flex-col gap-2 transition-colors hover:border-zinc-600 focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
     >
       <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-zinc-100">{asset.ticker}</span>
-            <span className="text-xs px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
-              {assetTypeBadge(asset)}
-            </span>
-            <PriceLine asset={asset} price={price} />
-          </div>
-          <div className="text-sm text-zinc-400 mt-0.5">{asset.name}</div>
+        <div className="min-w-0">
+          <div className="font-semibold text-zinc-100">{asset.ticker}</div>
+          <div className="text-xs text-zinc-500 truncate">{asset.name}</div>
         </div>
-
         {latest && colors ? (
-          <div className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wide ${colors.badge}`}>
+          <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${colors.badge}`}>
             {latest.direction}
-          </div>
+          </span>
         ) : (
-          <div className="shrink-0 text-xs px-2.5 py-1 rounded-full bg-zinc-800 text-zinc-600">
-            no signal
-          </div>
+          <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-600">—</span>
         )}
       </div>
 
+      <div className="text-lg font-medium text-zinc-100 tabular-nums">
+        {price != null ? `${asset.asset_type === 'forex' ? '' : '$'}${formatPrice(price)}` : '—'}
+      </div>
+
       {latest ? (
-        <>
-          <div>
-            <div className="flex justify-between text-xs text-zinc-500 mb-1">
-              <span>Confidence</span>
-              <span>{latest.confidence}%</span>
-            </div>
-            <div className="h-1.5 rounded-full bg-zinc-800">
-              <div className="h-full rounded-full bg-sky-500" style={{ width: `${latest.confidence}%` }} />
-            </div>
+        <div>
+          <div className="h-1 rounded-full bg-zinc-800">
+            <div className="h-full rounded-full bg-sky-500" style={{ width: `${latest.confidence}%` }} />
           </div>
-
-          <p className="text-sm text-zinc-300 leading-relaxed">{latest.reasoning}</p>
-
-          {accuracy && (
-            <div className="text-xs text-zinc-500">
-              Historical accuracy: {Math.round(accuracy.rate * 100)}% (n={Math.round(accuracy.n)})
-            </div>
-          )}
-
-          {latest.sources.length > 0 && (
-            <div className="space-y-1">
-              <div className="text-xs text-zinc-500 uppercase tracking-wide">Sources</div>
-              {(latest.sources as SignalSource[]).slice(0, 3).map((s, i) => (
-                <div key={i} className="text-xs text-zinc-400 leading-snug">
-                  <span className="text-zinc-500">{s.source} · </span>
-                  {s.headline}
-                </div>
-              ))}
-              {latest.sources.length > 3 && (
-                <div className="text-xs text-zinc-600">+{latest.sources.length - 3} more — click for details</div>
-              )}
-            </div>
-          )}
-
-          <div className="flex items-center justify-between pt-1 border-t border-zinc-800">
-            <div className="flex items-center gap-1.5">
-              {history.map((s, i) => (
-                <div
-                  key={i}
-                  title={`${s.direction} · ${s.confidence}% · ${new Date(s.created_at).toLocaleDateString()}`}
-                  className={`w-2 h-2 rounded-full ${directionColors(s.direction).dot} ${i === 0 ? 'opacity-100' : 'opacity-40'}`}
-                />
-              ))}
-            </div>
-            <span className="text-xs text-zinc-600">{timeAgo(latest.created_at)}</span>
+          <div className="flex justify-between text-[10px] text-zinc-600 mt-1">
+            <span>{latest.confidence}%</span>
+            <span>{timeAgo(latest.created_at)}</span>
           </div>
-        </>
-      ) : (
-        <div className="text-xs text-zinc-600 italic">
-          Signal will appear after the first pipeline run.
         </div>
+      ) : (
+        <div className="text-[10px] text-zinc-600 italic">no signal yet</div>
       )}
     </button>
   )
@@ -402,7 +371,7 @@ function AssetDetailModal({ data, onClose }: { data: CardData; onClose: () => vo
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl rounded-xl border border-zinc-800 bg-zinc-900 p-6 flex flex-col gap-4"
+        className="w-full max-w-5xl rounded-xl border border-zinc-800 bg-zinc-900 p-4 sm:p-6 flex flex-col gap-4"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-2">
@@ -425,16 +394,20 @@ function AssetDetailModal({ data, onClose }: { data: CardData; onClose: () => vo
           </button>
         </div>
 
-        <div className="space-y-1.5">
-          <TradingViewSingleQuote asset={asset} />
-          <TradingViewChart asset={asset} />
-          <div className="text-xs text-zinc-600">
-            Live price &amp; chart: {tradingViewSymbol(asset)} (TradingView) — the instrument this asset&apos;s
-            signals are quoted and graded against. The price in the header above is the Finnhub quote the app
-            grades with, refreshed about once a minute; a small gap vs. the live stream is timing, not an error.
+        {/* Trading-app layout: chart takes the left ~60% on desktop, the signal
+            details sit alongside it; on mobile the columns stack. */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-x-6 gap-y-4">
+          <div className="lg:col-span-3 space-y-1.5">
+            <TradingViewSingleQuote asset={asset} />
+            <TradingViewChart asset={asset} />
+            <div className="text-xs text-zinc-600">
+              Live price &amp; chart: {tradingViewSymbol(asset)} (TradingView) — the instrument this asset&apos;s
+              signals are quoted and graded against. The price in the header above is the Finnhub quote the app
+              grades with, refreshed about once a minute; a small gap vs. the live stream is timing, not an error.
+            </div>
           </div>
-        </div>
 
+          <div className="lg:col-span-2 flex flex-col gap-4">
         {latest && colors ? (
           <>
             <div className="flex items-center gap-3">
@@ -520,6 +493,8 @@ function AssetDetailModal({ data, onClose }: { data: CardData; onClose: () => vo
             Signal will appear after the first pipeline run.
           </div>
         )}
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -723,17 +698,25 @@ export default function AssetGrid({
             onQueryChange={setQuery}
             onPick={card => { setSelectedId(card.asset.id); setQuery('') }}
           />
-          <button
-            onClick={() => setMenuOpen(true)}
-            aria-label="Open menu"
-            data-testid="menu-button"
-            className="relative shrink-0 p-2 rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-600 hover:text-zinc-100 transition-colors"
-          >
-            <HamburgerIcon />
-            {filtersActive && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-sky-500" />}
-          </button>
+          {/* Spacer reserving room for the fixed menu toggle below. */}
+          <div className="w-9 shrink-0" />
         </div>
       </header>
+
+      {/* Fixed (not inside the header) so it stays above the open menu's backdrop
+          and can morph into the X that closes it. The sticky header keeps this
+          spot visually "in" the header at all times. */}
+      <button
+        onClick={() => setMenuOpen(o => !o)}
+        aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+        data-testid="menu-button"
+        className="fixed right-4 sm:right-6 top-3.5 z-[80] p-2 rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-600 hover:text-zinc-100 transition-colors"
+      >
+        <MenuToggleIcon open={menuOpen} />
+        {filtersActive && !menuOpen && (
+          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-sky-500" />
+        )}
+      </button>
 
       <SideMenu
         open={menuOpen}
@@ -774,7 +757,7 @@ export default function AssetGrid({
             )}
           </div>
         ) : (
-          <div className="mx-auto max-w-6xl px-4 py-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="mx-auto max-w-6xl px-4 py-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
             {filtered.map(data => (
               <AssetCard key={data.asset.id} data={data} onOpen={() => setSelectedId(data.asset.id)} />
             ))}
