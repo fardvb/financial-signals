@@ -159,7 +159,6 @@ function SideMenu({
   // so the nav items sit directly next to each other when the menu opens.
   const [filtersOpen, setFiltersOpen] = useState(false)
   useBodyScrollLock(open)
-  if (!open) return null
 
   const navItem = (active: boolean) =>
     `w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between ${
@@ -167,10 +166,31 @@ function SideMenu({
     }`
 
   return (
-    <div className="fixed inset-0 z-[70]">
-      <div className="absolute inset-0 bg-black/60 animate-[fade-in_200ms_ease-out]" onClick={onClose} />
+    // Stays mounted so closing can animate (transitions can't run on unmount).
+    // visibility transitions discretely: it flips to visible immediately on open
+    // but only goes hidden after the 200ms close, keeping the slide-out on
+    // screen and then dropping the closed drawer from the tab order / a11y tree.
+    <div
+      className={`fixed inset-0 z-[70] transition-[visibility] duration-200 ${
+        open ? 'visible' : 'invisible pointer-events-none'
+      }`}
+    >
+      <div
+        className={`absolute inset-0 bg-black/60 transition-opacity duration-200 ease-out ${
+          open ? 'opacity-100' : 'opacity-0'
+        }`}
+        onClick={onClose}
+      />
       <aside
-        className="absolute right-0 top-0 h-full w-72 max-w-[85vw] bg-zinc-950 border-l border-zinc-800 overflow-y-auto overscroll-contain p-4 space-y-1 animate-[drawer-in_200ms_ease-out]"
+        className={`absolute right-0 top-0 h-full w-72 max-w-[85vw] bg-zinc-950 border-l border-zinc-800 overflow-y-auto overscroll-contain p-4 space-y-1 transition-transform duration-200 ease-out ${
+          open ? 'translate-x-0' : 'translate-x-full'
+        }`}
+        // Unmounting used to reset the filter accordion for free; now collapse it
+        // once the slide-out finishes (not during — it would visibly scrunch),
+        // so the menu still always reopens with filters closed.
+        onTransitionEnd={e => {
+          if (!open && e.target === e.currentTarget) setFiltersOpen(false)
+        }}
         data-testid="side-menu"
       >
         {/* No close button here — the floating hamburger morphs into an X and stays on top. */}
